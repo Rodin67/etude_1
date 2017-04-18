@@ -1,0 +1,832 @@
+---
+title: "Etude 1"
+output:
+  html_document: default
+  html_notebook: default
+  pdf_document: default
+  word_document: default
+---
+```{r knitr options, include=FALSE}
+library(knitr)
+opts_chunk$set(echo=FALSE, cache=TRUE)
+```
+
+```{r library, include=FALSE, cache=TRUE}
+library(readr)
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(gplots)
+library(ggplot2)
+library(broom)
+library(xtable)
+library(sp)
+library(rgdal)
+library(RColorBrewer)
+library(classInt)
+library(epitools)
+library(compareGroups)
+```
+
+```{r importation, include=FALSE, cache=TRUE}
+irc.greffe <- read_delim("./data/irc.greffe.csv", 
+    ";", escape_double = FALSE, trim_ws = TRUE, locale = locale(encoding = "latin1", decimal_mark = ",")) %>% 
+  mutate(gr_bmi = factor(gr_bmi, levels = c("<18.5", "18.5-24.9", "25-29.9", "30-34.9", ">35")),
+         ddc = as.Date(ddc, "%d/%m/%Y"),
+         DECES1 = as.Date(DECES1, "%d/%m/%Y"))
+
+
+# irc.delai <- read_delim("./data/irc.delai2015.csv",
+#     ";", escape_double = FALSE, trim_ws = TRUE,
+#     locale = locale(encoding = "latin1", decimal_mark = ","),
+#     col_types = cols(FAV_DATE2 = col_date(format = "%d/%m/%Y"),
+#                      DDIRT2 = col_date(format = "%d/%m/%Y"),
+#                      DNAIS2 = col_date(format = "%d/%m/%Y"),
+#                      DINSCMED2 = col_date(format = "%d/%m/%Y"),
+#                      dgrf2 = col_date(format = "%d/%m/%Y"),
+#                      dsvr2 = col_date(format = "%d/%m/%Y"),
+#                      ddc2 = col_date(format = "%d/%m/%Y"),
+#                      dpdv2 = col_date(format = "%d/%m/%Y"), 
+#                      DATE_DERNOUV2 = col_date(format = "%d/%m/%Y"))) %>%
+#   filter(DDIRT2 > as.Date("2009-12-31"))
+# 
+# irc.greffe <- irc.delai %>% select(RREC_COD, ddc2) %>%
+#   right_join(irc.greffe, by = "RREC_COD")
+#   
+# 
+# irc.greffe$ddc <- irc.greffe$ddc2
+irc.greffe$GRF1[as.Date(irc.greffe$GRF1) > as.Date("2016-08-31")] <- NA
+irc.greffe$kmdc <- 0
+irc.greffe$kmdc[irc.greffe$ddc < as.Date("2016-09-01") | irc.greffe$DECES1 < as.Date("2016-09-01")] <- 1
+
+irc.greffe$kmdelaidc[irc.greffe$kmdc==0] <- ifelse(!is.na(irc.greffe$DDIRT[irc.greffe$kmdc==0]), as.Date("2016-09-01") - irc.greffe$DDIRT[irc.greffe$kmdc==0], as.Date("2016-09-01") - irc.greffe$GRF1[irc.greffe$kmdc==0])
+
+irc.greffe$kmdelaidc[irc.greffe$kmdc==1] <- ifelse(!is.na(irc.greffe$DDIRT[irc.greffe$kmdc==1]), irc.greffe$ddc[irc.greffe$kmdc==1] - irc.greffe$DDIRT[irc.greffe$kmdc==1], irc.greffe$DECES1[irc.greffe$kmdc==1] - irc.greffe$GRF1[irc.greffe$kmdc==1])
+
+irc <- irc.greffe
+irc$METHOn[is.na(irc$METHOn)] <- "Greffe"
+irc$PBRn[is.na(irc$PBRn) | irc$METHOn=="Greffe"] <- 2
+irc$delaitx[irc$METHOn=="Greffe"] <- 0
+irc$kmtx <- irc$tx
+irc$kmtx[irc$tx==0 & !is.na(irc$GRF1)] <- 1
+irc$kmtx[irc$METHOn=="Greffe"] <- 1
+irc$dgrf <- irc$dgrf - 14
+irc$DDIRT <- irc$DDIRT - 14
+irc <- irc %>% 
+  mutate(avc_ait = ifelse(AVCn==1 | AITn==1, 1,0),
+         kmdelaidc = as.numeric(kmdelaidc),
+         gr_delai_greffe = ifelse(is.na(delaitx), 0,
+                                  ifelse(delaitx<=12 & delaitx>0, 1, 
+                                         ifelse(delaitx<=24 & delaitx>12, 2, 
+                                                ifelse(delaitx<=36 & delaitx>24, 3, 
+                                                       ifelse(METHOn=="Greffe", 4, NA))))),
+         temps_avant_changement = ifelse(METHOn %in% c("Hémodialyse", "Dialyse péritonéale"), round(delaitx * 30.5, 0), ARF1 - irc.greffe$GRF1))
+irc$changement <- 0
+irc$changement[!is.na(irc$temps_avant_changement)] <- 1
+
+
+iga <- irc %>%  mutate(nephgp = factor("gnc")) %>% filter(iga == 1, PBRn %in% c(1,2))
+diab <- irc %>% filter(diab == 1) %>% mutate(nephgp = factor("diabète"))
+pkrd <- irc %>% filter(pkrd == 1) %>% mutate(nephgp = factor("APKD"))
+gnc <- irc %>% 
+  filter(gnc ==1, 
+         PBRn %in% c(1,2), 
+         liste_longue %in% 
+           c("GN membrano-proliférative type 1", 
+             "GN membrano-proliférative type 2, dépôts denses", 
+             "GN extra-membraneuse", 
+             "GN avec HSF", 
+             "Néphropathie lupique",
+             "Purpura rhumatoïde")| 
+                                  LMALADI %in% c("Glomérulo. avec hyalinose segmentaire et focale de l'adulte (av.syndrome néphrotique).", 
+                                                 "Synd. néphrotique sévère avec sclérose focale (Pédiatrique, GN avec hyalinose segment. et focale de l'enfant)",
+                                                 "Glomérulo. extra-membraneuse",
+                                                 "Glomérulo. membrano-prolif., type I (par immunofluo. et/ou microscopie électr. (hors codes 784 ou 789)",
+                                                 "Glomérulo. membrano-proliférative type II avec dépôts denses (prouvée par immunofluorescence et/ou microscopie électronique)",
+                                                 "Syndrome de Goodpasture",
+                                                 "Polyangéite microscopique et glomerulonephrite extracapillaires pauci-immune à ANCA",
+                                                 "Granulomatose de Wegener",
+                                                 "Lupus érythémateux",
+                                                 "Purpura rhumatoide")) %>%
+  mutate(nephgp = factor(ifelse(liste_longue %in% c("GN membrano-proliférative type 1", 
+                                                    "GN membrano-proliférative type 2, dépôts denses", 
+                                                    "GN extra-membraneuse", 
+                                                    "GN avec HSF") | 
+                                  LMALADI %in% c("Glomérulo. avec hyalinose segmentaire et focale de l'adulte (av.syndrome néphrotique).", 
+                                                 "Synd. néphrotique sévère avec sclérose focale (Pédiatrique, GN avec hyalinose segment. et focale de l'enfant)",
+                                                 "Glomérulo. extra-membraneuse",
+                                                 "Glomérulo. membrano-prolif., type I (par immunofluo. et/ou microscopie électr. (hors codes 784 ou 789)",
+                                                 "Glomérulo. membrano-proliférative type II avec dépôts denses (prouvée par immunofluorescence et/ou microscopie électronique)",
+                                                 "Syndrome de Goodpasture",
+                                                 "Polyangéite microscopique et glomerulonephrite extracapillaires pauci-immune à ANCA",
+                                                 "Granulomatose de Wegener"), 
+                                "gnc1", "gnc2")))
+
+irc.etude <- bind_rows(iga,diab,pkrd,gnc) 
+
+# irc.delai <- read_delim("./data/irc.delai2015.csv", 
+#     ";", escape_double = FALSE, trim_ws = TRUE, 
+#     locale = locale(encoding = "latin1", decimal_mark = ","), 
+#     col_types = cols(FAV_DATE2 = col_date(format = "%d/%m/%Y"),
+#                      DDIRT2 = col_date(format = "%d/%m/%Y"),
+#                      DNAIS2 = col_date(format = "%d/%m/%Y"),
+#                      DINSCMED2 = col_date(format = "%d/%m/%Y"),
+#                      dgrf2 = col_date(format = "%d/%m/%Y"),
+#                      dsvr2 = col_date(format = "%d/%m/%Y"),
+#                      ddc2 = col_date(format = "%d/%m/%Y"),
+#                      dpdv2 = col_date(format = "%d/%m/%Y"),
+#                       DATE_DERNOUV2 = col_date(format = "%d/%m/%Y"))) %>%
+#   rename(FAV_DATE = FAV_DATE2,
+#          DDIRT = DDIRT2,
+#          DNAIS = DNAIS2,
+#          DINSCMED = DINSCMED2,
+#          dgrf = dgrf2,
+#          dsvr = dsvr2,
+#          ddc = ddc2,
+#          dpdv = dpdv2,
+#        DATE_DERNOUV = DATE_DERNOUV2) %>%
+#   filter(DDIRT > as.Date("2009-12-31"))
+# 
+# irc.greffe <- irc.greffe %>%
+#   select(-one_of(colnames(irc.delai)[-1])) %>%
+#   left_join(irc.delai, by = "RREC_COD")
+
+# irc.greffe$delai_dernouv[is.na(irc.greffe$delai_dernouv)] <- irc.greffe$DELAINOUV1
+```
+
+```{r Data incid spatiale, cache=TRUE, include=FALSE}
+## Tableaux du nombre de cas d'IgA par âge et sexe selon la région
+nbev_iga_region<-iga[,c("sex","classage","RES_REG_LIB")]
+nbev_iga_region<-unite(nbev_iga_region, "sex_age", 1:2, sep = "-")
+nbev_iga_region<-as.data.frame.matrix(table(nbev_iga_region$sex_age,nbev_iga_region$RES_REG_LIB))
+nbev_iga_region$ETRANGER<-NULL 
+nbev_iga_region$`POLYNESIE FRANCAISE`<-NULL # Suppression de la Polynésie française qui n'est pas dans les statistiques de l'INSEE
+nbev_iga_region$Mayotte<-NULL
+nbev_iga_region$Guyane<-NULL
+## Tableaux de l'effectif par région, pour la catégorie d'âge 16-19 ans, les données INSEE étant de 15 à 19 ans, muliplié par 0.8
+eff_region <- read.csv2("./data/eff_region.csv", header = T, ";", encoding = "latin1")
+nbev_iga_region<-data.frame(eff_region[,1],nbev_iga_region[-33,])
+colnames(nbev_iga_region)[1]<-"classage"
+
+## Tableaux de l'effectif en France
+eff_france <- read.csv2("./data/eff_france.csv", header = T,";", encoding = "latin1")
+eff_france$age<-cut(eff_france$age, breaks = c(16, seq(20,95,5)), right = F, include.lowest = T)
+eff_france<-gather(eff_france, "sex","effectif", 2:3)
+eff_france$sex<-factor(eff_france$sex, levels = c("h","f"), labels = c(1,2))
+eff_france<-unite(eff_france, "classage", 2:1, sep = "-")
+eff_france$classage<-factor(eff_france$classage)
+
+## Calcul par standardisation directe sur l'âge et le sexe pour 100 000 habitants
+standdirect<-matrix(nrow = 4, ncol = 25, dimnames = list(c("Ratio brut","Ratio ajuste","IC inf","IC sup"), c(colnames(nbev_iga_region[,-1]))))
+for (i in colnames(eff_region[,-1])) standdirect[,i]<-as.matrix(round(ageadjust.direct(nbev_iga_region[,i], eff_region[,i], stdpop = eff_france[,2])*10^5,2))
+standdirect<-t(standdirect)
+standdirect<-data.frame(standdirect)
+standdirect$annuel <- round(standdirect$Ratio.ajuste/5,2)
+standdirect[c("Guadeloupe"), c("annuel")] <- round(standdirect[c("Guadeloupe"), c("Ratio.ajuste")]/2,2)
+standdirect[c("Martinique"), c("annuel")] <- round(standdirect[c("Martinique"), c("Ratio.ajuste")]/2,2)
+
+## Tableaux du nombre de cas d'IgA par âge et sexe selon le département
+nbev_iga_dep<-iga[,c("sex","classage","RES_DEP_LIB","res_dep_cod")] 
+nbev_iga_dep<-unite(nbev_iga_dep, "sex_age", 1:2, sep = "-")
+nbev_iga_dep$res_dep_cod[nbev_iga_dep$RES_DEP_LIB=="Corse-du-Sud"] <- "2A"
+nbev_iga_dep$res_dep_cod[nbev_iga_dep$RES_DEP_LIB=="Haute-Corse"] <- "2B"
+nbev_iga_dep$res_dep_cod<-factor(nbev_iga_dep$res_dep_cod)
+nbev_iga_dep<-unite(nbev_iga_dep, "dep", 3:2, sep = "-", remove = F)
+nbev_iga_dep<-nbev_iga_dep[!(nbev_iga_dep$res_dep_cod=="976" | nbev_iga_dep$res_dep_cod=="987" | is.na(nbev_iga_dep$res_dep_cod)),]
+nbev_iga_dep<-as.data.frame.matrix(table(nbev_iga_dep$sex_age, nbev_iga_dep$RES_DEP_LIB))
+nbev_iga_dep$Corse.du.Sud <- 0
+
+## Tableaux de l'effectif par département, pour la catégorie d'âge 16-19 ans, les données INSEE étant de 15 à 19 ans, muliplié par 0.8
+eff_dep <- read.csv2("./data/eff_dep.csv", header = T, ";", encoding = "latin1")
+nbev_iga_dep<-data.frame(eff_dep[,1],nbev_iga_dep)
+colnames(nbev_iga_dep)[1]<-"classage"
+eff_dep[eff_dep$classage=="1.[16,20)",-1] <- 0.8*eff_dep[eff_dep$classage=="1.[16,20)",-1]
+eff_dep[eff_dep$classage=="2.[16,20)",-1] <- 0.8*eff_dep[eff_dep$classage=="2.[16,20)",-1]
+
+## Tableaux de l'effectif en France
+eff_france <- read.csv2("./data/eff_france.csv", header = T,";", encoding = "latin1")
+eff_france$age<-cut(eff_france$age, breaks = c(16, seq(20,95,5)), right = F, include.lowest = T)
+eff_france<-gather(eff_france, "sex","effectif", 2:3)
+eff_france$sex<-factor(eff_france$sex, levels = c("h","f"), labels = c(1,2))
+eff_france<-unite(eff_france, "classage", 2:1, sep = "-")
+eff_france$classage<-factor(eff_france$classage)
+
+## Calcul par standardisation directe sur l'âge et le sexe pour 100 000 habitants
+nbev_iga_dep$Creuse<-NULL
+nbev_iga_dep$Guyane<-NULL
+standdirect_dep<-matrix(nrow = 4, ncol = 98, dimnames = list(c("Ratio brut","Ratio ajuste","IC inf","IC sup"), c(colnames(nbev_iga_dep[,-1]))))
+for (i in colnames(eff_dep[,-1])) standdirect_dep[,i]<-as.matrix(round(ageadjust.direct(nbev_iga_dep[,i], eff_dep[,i], stdpop = eff_france[,2])*10^5,2))
+standdirect_dep<-t(standdirect_dep)
+standdirect_dep<-data.frame(standdirect_dep)
+standdirect_dep$annuel <- round(standdirect_dep$Ratio.ajuste/5,2)
+standdirect_dep[c("Guadeloupe"), c("annuel")] <- round(standdirect_dep[c("Guadeloupe"), c("Ratio.ajuste")]/2,2)
+standdirect_dep[c("Martinique"), c("annuel")] <- round(standdirect_dep[c("Martinique"), c("Ratio.ajuste")]/2,2)
+
+## _carte ----
+dep <- readOGR(dsn = "./data/cartes", layer="DEPARTEMENT", stringsAsFactors=FALSE)
+carte_dep <- standdirect_dep*10
+carte_dep$dep <-rownames(standdirect_dep)
+carte_dep <- carte_dep[,5:6]
+carte_dep <- bind_rows(carte_dep, data.frame(dep = "Creuse", annuel = 0))
+carte_dep <- carte_dep[!carte_dep$dep %in% c("Guadeloupe", "Martinique", "Mayotte", "Réunion"),]
+carte_dep <- carte_dep[order(carte_dep$dep),]
+carte_dep$dep <- sort(dep@data$NOM_DEPT)
+dep@data <- left_join(dep@data, carte_dep, by = c("NOM_DEPT" = "dep"))
+```
+
+Patients inclus :  
+- Suppléance entre 01/01/2010 et 31/12/2014  
+- IgA avec biopsie  
+- diabète avec et sans biopsie  
+- pkrd avec et sans biopsie  
+- gnc avec biopsie  
+- patients greffé dès le départ inclus malgré l'absence de biopsies  
+
+Gr 1 GNC :  
+- table dialyse :  
+"GN membrano-proliférative type 1",  
+"GN membrano-proliférative type 2, dépôts denses",  
+"GN extra-membraneuse",  
+"GN avec HSF"  
+- table greffe :  
+"Glomérulo. avec hyalinose segmentaire et focale de l'adulte (av.syndrome néphrotique).",  
+"Synd. néphrotique sévère avec sclérose focale (Pédiatrique, GN avec hyalinose segment. et focale de l'enfant)",  
+"Glomérulo. extra-membraneuse",  
+"Glomérulo. membrano-prolif., type I (par immunofluo. et/ou microscopie électr. (hors codes 784 ou 789)",  
+"Glomérulo. membrano-proliférative type II avec dépôts denses (prouvée par immunofluorescence et/ou microscopie électronique)",  
+"Syndrome de Goodpasture",  
+"Polyangéite microscopique et glomerulonephrite extracapillaires pauci-immune à ANCA",  
+"Granulomatose de Wegener"  
+
+Gr 2 GNC :  
+- table dialyse :  
+"Néphropathie lupique",  
+"Purpura rhumatoïde"  
+- table greffe :  
+"Lupus érythémateux"  
+"Purpura rhumatoide"  
+
+**XXXXX Incohérences entre table greffe et table dialyse :**  
+1 patient qui a les pathologies GN membrano-proliférative type 1 et Lupus érythémateux  
+1 patient qui a les pathologies GN extra-membraneuse et Lupus érythémateux  
+1 patient qui a les pathologies Néphropathie lupique et Glomérulo. avec hyalinose segmentaire et focale de l'adulte (av.syndrome néphrotique).  
+1 patient qui a les pathologies Néphropathie lupique et Glomérulo. membrano-prolif., type I (par immunofluo. et/ou microscopie électr. (hors codes 784 ou 789)  
+2 patient qui ont les pathologies GN extracapillaire ou endo/extracapillaire et Lupus érythémateux  
+
+**XXXXX Glomérulopathies des vascularites systémiques (purpura rhumatoïde exclu) se trouve dans "Maladies systémiques autres" qui avait été exclus. Faut-il les inclure ?**
+
+# Incidence spatiale
+
+```{r carte France, echo=FALSE, cache=TRUE}
+classTemps <- classIntervals(dep@data$annuel, 9, style = "quantile")
+palette <- brewer.pal(n = 9, name = "YlOrRd")
+legende <- as.character(levels(cut(dep@data$annuel, breaks = classTemps$brks, include.lowest = TRUE, right = FALSE)))
+dep@data$ratio_coul <- as.character(cut(dep@data$annuel, breaks = classTemps$brks, labels = palette, include.lowest = TRUE))
+
+par(mar = c(0,0,1,0))
+sp::plot(dep, col = dep@data$ratio_coul, border = "black", main = "Incidence annuelle de la maladie de Berger")
+legend("bottomleft", legend = legende, fill = palette, cex=0.95, title = "Incidence/M d'hab.")
+```
+
+# Incidence temporelle
+
+En cours...
+
+# Description des caractéristiques démographiques des patients avec une néphropathie à IgA en comparaison avec 4 groupes 
+
+**XXXXX Voir ce que l'on faire des données manquantes (considéré comme 0, NA). De plus, les 1795 patients qui sont uniquement dans la table greffe n'ont pas ces infos**
+
+```{r tableau 1, echo=FALSE, warning=FALSE, cache=TRUE, results="asis"}
+irc.etude %>%
+  as.data.frame() %>%
+  mutate(nephgp = factor(nephgp, levels = c("gnc", "gnc1", "gnc2", "APKD", "diabète"), labels = c("IgA", "GNC 1", "GNC 2", "PKRD", "Diabète")),
+         DIABn = factor(DIABn),
+         CIRHn = factor(CIRHn),
+         IDMn = factor(IDMn),
+         ICn = factor(ICn),
+         AMIn = factor(AMIn),
+         avc_ait = factor(avc_ait),
+         VIHn = factor(VIHn),
+         VHBn = factor(VHBn),
+         VHCn = factor(VHCn),
+         TABACn = factor(TABACn),
+         sex = factor(sex, labels = c("Homme", "Femme")),
+         MARCHn = factor(MARCHn, labels = c("Incapacité totale","	Nécessité d une tierce personne","Marche autonome"))) %>% 
+  compareGroups(nephgp~age+sex+DIABn+CIRHn+IDMn+ICn+AMIn+avc_ait+VIHn+VHBn+VHCn+TABACn+MARCHn+ALBINI+HBINI+CREATINI+dfg, data = ., method = c(age = 2, CREATINI = 2), include.miss = T) %>%
+  createTable(show.all = T) %>%
+  export2md()
+```
+
+
+# Description des modalités de traitements de l’IRCT des patients avec une néphropathie à IgA en comparaison avec 4 groupes 
+
+```{r tableau 2, echo=FALSE, warning=FALSE, cache=TRUE, results="asis"}
+irc.etude %>%
+  as.data.frame() %>%
+  mutate(nephgp = factor(nephgp, levels = c("gnc", "gnc1", "gnc2", "APKD", "diabète"), labels = c("IgA", "GNC 1", "GNC 2", "PKRD", "Diabète")),
+         METHOn = factor(METHOn, labels = c("Dialyse péritonéale","Greffe préemptive","Hémodialyse"))) %>% 
+  compareGroups(nephgp~METHOn, data = ., include.miss = T) %>%
+  createTable(show.all = T) %>%
+  export2md()
+```
+
+
+
+# Comparer de l’accessibilité aux différents traitements de l’IRCT en prenant comme groupe de référence la polykystose rénale 
+
+Modèle 1 : âge, sexe, année de début de l’hémodialyse  
+Modèle 2 : modèle 1 + comorbidités : diabètes, insuffisance cardiaque, AVC, Cancer, BMI  
+Modèle 3 : modèle 2 + hémoglobine, créatinine, albumine  
+Modèle 4 : modèle 3 + degré d’autonomie  
+
+
+### Hémodialyse vs greffe pré-emptive
+
+**J'ai comparé les PKRD aux autres groupes. Si on ne veut comparer que les IgA, ça donnerait le même résultat.**
+
+```{r multi_etats, echo=FALSE}
+# Visualisation des données
+# iga %>% select(METHOn, DDIRT, GRF1, ARF1, dgrf, temps_avant_changement, changement, kmdelaidc, kmdc, kmtx) %>% mutate(temps_avant_changement = round(temps_avant_changement/365.25, 1)) %>% View
+
+
+iga %>%
+  
+```
+
+**Sans ajustement**
+```{r comparaison HD/G sans ajustement, message=FALSE, warning=FALSE}
+p.value <- irc.etude %>%
+  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1)) %>% 
+  glm(METHOn~nephgp, data = ., family = "binomial") %>%
+  summary() %>%
+  coef() %>% 
+  as.data.frame() %>%
+  select(`Pr(>|z|)`) %>%
+  round(3)
+
+or <- irc.etude %>%
+  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1)) %>% 
+  glm(METHOn~nephgp, data = ., family = "binomial") %>% 
+  summary() %>% 
+  coef() %>%  
+  as.data.frame() %>% 
+  select(Estimate) %>%
+  exp() %>% 
+  round(3)
+
+int.conf <- irc.etude %>%
+  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1)) %>% 
+  glm(METHOn~nephgp, data = ., family = "binomial") %>% 
+  confint() %>% 
+  exp()  %>%
+  round(3) %>%
+  as.data.frame()
+
+cbind(or, int.conf, p.value) %>% 
+  as.data.frame() %>%
+  add_rownames() %>%
+  rename(Groupe = rowname,
+         OR = Estimate,
+         IC.inf = `2.5 %`,
+         IC.sup = `97.5 %`,
+         p = `Pr(>|z|)`) %>%
+  mutate(Groupe = c("Intercept","Diabète","IgA","GNC 1","GNC 2")) %>%
+  kable()
+```
+
+**Modèle 1**
+```{r comparaison HD/G modèle 1, message=FALSE, warning=FALSE}
+p.value <- irc.etude %>%
+  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female"))) %>% 
+  glm(METHOn~nephgp+age+sex+anirt, data = ., family = "binomial") %>%
+  summary() %>%
+  coef() %>% 
+  as.data.frame() %>%
+  select(`Pr(>|z|)`) %>%
+  round(3)
+
+or <- irc.etude %>%
+  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female"))) %>% 
+  glm(METHOn~nephgp+age+sex+anirt, data = ., family = "binomial") %>% 
+  summary() %>% 
+  coef() %>%  
+  as.data.frame() %>% 
+  select(Estimate) %>%
+  exp() %>% 
+  round(3)
+
+int.conf <- irc.etude %>%
+  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female"))) %>% 
+  glm(METHOn~nephgp+age+sex+anirt, data = ., family = "binomial") %>% 
+  confint() %>% 
+  exp()  %>%
+  round(3) %>%
+  as.data.frame()
+
+cbind(or, int.conf, p.value) %>% 
+  as.data.frame() %>%
+  add_rownames() %>%
+  rename(Groupe = rowname,
+         OR = Estimate,
+         IC.inf = `2.5 %`,
+         IC.sup = `97.5 %`,
+         p = `Pr(>|z|)`) %>%
+  mutate(Groupe = c("Intercept","Diabète","IgA","GNC 1","GNC 2","Age","Sexe Femme","Annee")) %>%
+  kable()
+```
+
+**Modèle 2**
+
+**XXXXX Trop de données manquantes, 6478 patients supprimés. Peut-on considérer que les données manquantes pour le diabète, l'IC, l'avc et le cancer sont égales à 0 ? Ou on fait une imputation multiple ? Pour l'IMC on a 5857 données manquantes, à imputer ?**
+
+```{r comparaison HD/G modèle 2}
+# irc.etude %>%
+#   filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+#   mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+#          METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+#          sex = factor(sex, labels = c("Male", "Female")),
+#          anirt = factor(anirt),
+#          age = cut(age, breaks = c(0,40,200))) %>% 
+#   glm(METHOn~nephgp+age+sex+anirt+DIABn+ICn+avc_ait+KCn+gr_bmi, data = ., family = "binomial") %>%
+#   summary()
+# 
+# print("OR des estimate")
+# irc.etude %>%
+#   filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+#   mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+#          METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+#          sex = factor(sex, labels = c("Male", "Female")),
+#          anirt = factor(anirt)) %>% 
+#   glm(METHOn~nephgp+age+sex+anirt+DIABn+ICn+avc_ait+KCn+gr_bmi, data = ., family = "binomial") %>%
+#   summary() %>%
+#   coef() %>%
+#   exp()
+```
+
+**Modèle 3**
+
+**XXXXX Pareil pour les données manquantes.**
+
+```{r comparaison HD/G modèle 3}
+# irc.etude %>%
+#   filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+#   mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+#          METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+#          sex = factor(sex, labels = c("Male", "Female")),
+#          anirt = factor(anirt)) %>% 
+#   glm(METHOn~nephgp+age+sex+anirt+HBINI+CREATINI+ALBINI, data = ., family = "binomial") %>%
+#   summary()
+# 
+# print("OR des estimate")
+# irc.etude %>%
+#   filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+#   mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+#          METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+#          sex = factor(sex, labels = c("Male", "Female")),
+#          anirt = factor(anirt)) %>% 
+#   glm(METHOn~nephgp+age+sex+anirt+HBINI+CREATINI+ALBINI, data = ., family = "binomial") %>%
+#   summary() %>%
+#   coef() %>%
+#   exp()
+```
+
+**Modèle 4**
+
+**XXXXX Pareil pour les données manquantes.**
+
+```{r comparaison HD/G modèle 4}
+# irc.etude %>%
+#   filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+#   mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+#          METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+#          sex = factor(sex, labels = c("Male", "Female")),
+#          anirt = factor(anirt)) %>% 
+#   glm(METHOn~nephgp+age+sex+anirt+MARCHn, data = ., family = "binomial") %>%
+#   summary()
+# 
+# print("OR des estimate")
+# irc.etude %>%
+#   filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+#   mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+#          METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+#          sex = factor(sex, labels = c("Male", "Female")),
+#          anirt = factor(anirt)) %>% 
+#   glm(METHOn~nephgp+age+sex+anirt+MARCHn, data = ., family = "binomial") %>%
+#   summary() %>%
+#   coef() %>%
+#   exp()
+```
+
+### Hémodialyse vs dialyse péritonéale
+
+**Sans ajustement**
+```{r comparaison HD/DP sans ajustement, echo=FALSE, message=FALSE, warning=FALSE}
+p.value <- irc.etude %>%
+  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1)) %>% 
+  glm(METHOn~nephgp, data = ., family = "binomial") %>%
+  summary() %>%
+  coef() %>% 
+  as.data.frame() %>%
+  select(`Pr(>|z|)`) %>%
+  round(3)
+
+or <- irc.etude %>%
+  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1)) %>% 
+  glm(METHOn~nephgp, data = ., family = "binomial") %>% 
+  summary() %>% 
+  coef() %>%  
+  as.data.frame() %>% 
+  select(Estimate) %>%
+  exp() %>% 
+  round(3)
+
+int.conf <- irc.etude %>%
+  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1)) %>% 
+  glm(METHOn~nephgp, data = ., family = "binomial") %>% 
+  confint() %>% 
+  exp()  %>%
+  round(3) %>%
+  as.data.frame()
+
+cbind(or, int.conf, p.value) %>% 
+  as.data.frame() %>%
+  add_rownames() %>%
+  rename(Groupe = rowname,
+         OR = Estimate,
+         IC.inf = `2.5 %`,
+         IC.sup = `97.5 %`,
+         p = `Pr(>|z|)`) %>%
+  mutate(Groupe = c("Intercept","Diabète","IgA","GNC 1","GNC 2")) %>%
+  kable()
+```
+
+**Modèle 1**
+```{r comparaison HD/DP modèle 1, message=FALSE, warning=FALSE}
+p.value <- irc.etude %>%
+  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female"))) %>% 
+  glm(METHOn~nephgp+age+sex+anirt, data = ., family = "binomial") %>%
+  summary() %>%
+  coef() %>% 
+  as.data.frame() %>%
+  select(`Pr(>|z|)`) %>%
+  round(3)
+
+or <- irc.etude %>%
+  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female"))) %>% 
+  glm(METHOn~nephgp+age+sex+anirt, data = ., family = "binomial") %>% 
+  summary() %>% 
+  coef() %>%  
+  as.data.frame() %>% 
+  select(Estimate) %>%
+  exp() %>% 
+  round(3)
+
+int.conf <- irc.etude %>%
+  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female"))) %>% 
+  glm(METHOn~nephgp+age+sex+anirt, data = ., family = "binomial") %>% 
+  confint() %>% 
+  exp()  %>%
+  round(3) %>%
+  as.data.frame()
+
+cbind(or, int.conf, p.value) %>% 
+  as.data.frame() %>%
+  add_rownames() %>%
+  rename(Groupe = rowname,
+         OR = Estimate,
+         IC.inf = `2.5 %`,
+         IC.sup = `97.5 %`,
+         p = `Pr(>|z|)`) %>%
+  mutate(Groupe = c("Intercept","Diabète","IgA","GNC 1","GNC 2","Age","Sexe Femme","Annee")) %>%
+  kable()
+```
+
+**Modèle 2**
+```{r comparaison HD/DP modèle 2}
+
+```
+
+**Modèle 3**
+```{r comparaison HD/DP modèle 3}
+
+```
+
+**Modèle 4**
+```{r comparaison HD/DP modèle 4}
+
+```
+
+# Etude de survie au stade de la dialyse
+
+
+### Courbe de survie uniquement pour la néphropathie à IgA comparant l’hémodialyse, la dialyse péritonéale, et la greffe pré-emptive 
+
+
+```{r survie iga dialyse_greffe}
+par(mar = c(4,4,0,0.3))
+iga %>%
+  mutate(kmdelaidc = as.numeric(kmdelaidc)) %>%
+  survfit(Surv(kmdelaidc/365.25, kmdc)~METHOn, data = .) %>% 
+  plot(xlab= "Temps (années)", ylab = "Survie", col = c("blue","black","red"), xlim = c(0,7))
+legend(2, 0.7, legend = c("Dialyse péritonéale", "Greffe préemptive", "Hémodialyse"), col = c("blue","black","red"), lty = 1)
+
+# Modèle de Cox
+iga %>%
+  mutate(kmdelaidc = as.numeric(kmdelaidc),
+         METHOn = relevel(as.factor(METHOn), ref = "Hémodialyse")) %>%
+  coxph(Surv(kmdelaidc/365.25, kmdc)~METHOn+sex, data = .)
+
+# Conditions de validité
+print("Conditions de validités")
+iga %>%
+  mutate(kmdelaidc = as.numeric(kmdelaidc),
+         METHOn = relevel(as.factor(METHOn), ref = "Hémodialyse")) %>%
+  coxph(Surv(kmdelaidc/365.25, kmdc)~METHOn, data = .) %>%
+  cox.zph()
+```
+
+**XXXXX Quelle catégorie mettre en référence ? Ajuster sur quels variables ? Sachant que pour les patients uniquement greffés on n'a pas l'âge, le sexe, etc.**
+
+### Courbe de survie uniquement pour la néphropathie à IgA comparant l’hémodialyse sans greffe, greffe dans la 1 ère année de dialyse, greffe dans la 2 ème année de dialyse, greffe dans la 3 ème année de dialyse
+
+**Le point 0 est le point de greffe, mais les patient qui ont survécu suffisamment longtemps pour avoir une greffe sont peut-être plus "résistants" et peuvent mourir moins vite ?**
+
+```{r survie iga greffe graphique}
+par(mar = c(4,4,0,0.3))
+iga %>%
+  filter(dgrf < as.Date("2016-12-01") | is.na(dgrf)) %>%
+  mutate(kmdelaidc = ifelse(!is.na(delaitx), kmdelaidc - (delaitx * 30.2), kmdelaidc)) %>%
+  survfit(Surv(kmdelaidc/365.25, kmdc)~gr_delai_greffe, data = .) %>%
+  plot(xlab= "Temps (années)", ylab = "Survie", col = c("black", "green", "orange", "red","blue"), xlim = c(0,7), ylim = c(0.5,1))
+legend(1, 0.7, legend = c("Aucune greffe", "1ère année", "2e année", "3e année","préemptive"), col = c("black", "green", "orange", "red","blue"), lty = 1)
+```
+
+```{r survie iga greffe cox}
+# # Modèle de Cox
+# iga %>%
+#   mutate(kmdelaidc = as.numeric(kmdelaidc),
+#          gr_delai_greffe = relevel(as.factor(gr_delai_greffe), ref = "0")) %>%
+#   coxph(Surv(kmdelaidc/365.25, kmdc)~gr_delai_greffe+sex, data = .)
+# 
+# # Conditions de validité
+# print("Conditions de validités")
+# iga %>%
+#   mutate(kmdelaidc = as.numeric(kmdelaidc),
+#          gr_delai_greffe = relevel(as.factor(gr_delai_greffe), ref = "0")) %>%
+#   coxph(Surv(kmdelaidc/365.25, kmdc)~gr_delai_greffe+sex, data = .) %>%
+#   cox.zph()
+```
+
+**XXXXX Pas beaucoup de patients décédés**
+
+```{r deces selon moment de la greffe}
+# iga %>% filter(kmdc==1) %>% select(gr_delai_greffe) %>% table(useNA = "ifany")
+```
+
+
+### Courbe de survie globale (HD, DP, et greffe pré-emptive) comparant la néphropathie à IgA avec les 4 groupes
+
+```{r survie globale}
+par(mar = c(4,4,0,0.3))
+
+irc.etude %>%
+  survfit(Surv(kmdelaidc/365.25, kmdc)~nephgp, data = .) %>% 
+  plot(xlab= "Temps (années)", ylab = "Survie", col = brewer.pal(5, "Dark2"), xlim = c(0,7))
+legend(1, 0.6, legend = c("PKRD", "Diabète", "IgA", "GNC1", "GNC2"), col = brewer.pal(6, "Dark2"), lty = 1)
+text(5, 0.4, "Médiane diabète = 5.42 ans")
+
+# Modèle de Cox
+irc.etude %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "gnc")) %>%
+  coxph(Surv(kmdelaidc/365.25, kmdc)~nephgp, data = .)
+
+# Conditions de validité
+print("Conditions de validités")
+irc.etude %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "gnc")) %>%
+  coxph(Surv(kmdelaidc/365.25, kmdc)~nephgp, data = .) %>%
+  cox.zph() 
+```
+
+```{r comparaison survie entre les 5 groupes, fig.width=8, fig.height=11}
+par(mar = c(4,4,3,0.3), mfrow = c(3,2))
+
+iga %>%
+  survfit(Surv(kmdelaidc/365.25, kmdc)~METHOn, data = .) %>% 
+  plot(xlab= "Temps (années)", ylab = "Survie", col = brewer.pal(3, "Dark2"), xlim = c(0,7), main = "IgA")
+legend(1, 0.6, legend = c("Dialyse péritonéale", "Greffe préemptive", "Hémodialyse"), col = brewer.pal(3, "Dark2"), lty = 1)
+
+diab %>%
+  survfit(Surv(kmdelaidc/365.25, kmdc)~METHOn, data = .) %>% 
+  plot(xlab= "Temps (années)", ylab = "Survie", col = brewer.pal(3, "Dark2"), xlim = c(0,7), main = "Diabète")
+legend(1, 0.3, legend = c("Dialyse péritonéale", "Greffe préemptive", "Hémodialyse"), col = brewer.pal(3, "Dark2"), lty = 1)
+
+pkrd %>%
+  survfit(Surv(kmdelaidc/365.25, kmdc)~METHOn, data = .) %>% 
+  plot(xlab= "Temps (années)", ylab = "Survie", col = brewer.pal(3, "Dark2"), xlim = c(0,7), main = "PKRD")
+legend(1, 0.6, legend = c("Dialyse péritonéale", "Greffe préemptive", "Hémodialyse"), col = brewer.pal(3, "Dark2"), lty = 1)
+
+gnc %>%
+  filter(nephgp=="gnc1") %>%
+  survfit(Surv(kmdelaidc/365.25, kmdc)~METHOn, data = .) %>% 
+  plot(xlab= "Temps (années)", ylab = "Survie", col = brewer.pal(3, "Dark2"), xlim = c(0,7), main = "GNC : groupe 1")
+legend(1, 0.6, legend = c("Dialyse péritonéale", "Greffe préemptive", "Hémodialyse"), col = brewer.pal(3, "Dark2"), lty = 1)
+
+gnc %>%
+  filter(nephgp=="gnc2") %>%
+  survfit(Surv(kmdelaidc/365.25, kmdc)~METHOn, data = .) %>% 
+  plot(xlab= "Temps (années)", ylab = "Survie", col = brewer.pal(3, "Dark2"), xlim = c(0,7), main = "GNC : groupe 2")
+legend(1, 0.6, legend = c("Dialyse péritonéale", "Greffe préemptive", "Hémodialyse"), col = brewer.pal(3, "Dark2"), lty = 1)
+```
+
+** Peut être pas assez de patients pour le groupe 2 des GNC (pour la dialyse) **
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
