@@ -81,10 +81,17 @@ irc <- irc %>%
                                          ifelse(delaitx<=24 & delaitx>12, 2, 
                                                 ifelse(delaitx<=36 & delaitx>24, 3, 
                                                        ifelse(METHOn=="Greffe", 4, NA))))),
-         temps_avant_changement = ifelse(METHOn %in% c("Hémodialyse", "Dialyse péritonéale"), round(delaitx * 30.5, 0), ARF1 - irc.greffe$GRF1))
+         temps_avant_changement = ifelse(METHOn %in% c("Hémodialyse", "Dialyse péritonéale"), round(delaitx * 30.3, 0), ARF1 - irc.greffe$GRF1))
 irc$changement <- 0
 irc$changement[!is.na(irc$temps_avant_changement)] <- 1
 
+# patients avec un changement ou un décès = 0, on met un jour sinon conflit dans fine gray et tmerge
+irc <- irc %>%
+  mutate(temps_avant_changement = ifelse(temps_avant_changement==0, 1, temps_avant_changement),
+         kmdelaidc = ifelse(kmdelaidc==0, 1, kmdelaidc))
+
+# suppression des patients de la table greffe sans etre dans la table dialyse, on prend VHBn car on avait aucune donnée manquante pour les patients en commun aux deux tables
+irc <- irc %>% filter(!is.na(VHBn))
 
 iga <- irc %>%  mutate(nephgp = factor("gnc")) %>% filter(iga == 1, PBRn %in% c(1,2))
 diab <- irc %>% filter(diab == 1) %>% mutate(nephgp = factor("diabète"))
@@ -109,18 +116,11 @@ gnc <- irc %>%
                                                  "Granulomatose de Wegener",
                                                  "Lupus érythémateux",
                                                  "Purpura rhumatoide")) %>%
-  mutate(nephgp = factor(ifelse(liste_longue %in% c("GN membrano-proliférative type 1", 
-                                                    "GN membrano-proliférative type 2, dépôts denses", 
-                                                    "GN extra-membraneuse", 
-                                                    "GN avec HSF") | 
+  mutate(nephgp = factor(ifelse(liste_longue %in% c("GN avec HSF", 
+                                                    "GN extra-membraneuse") | 
                                   LMALADI %in% c("Glomérulo. avec hyalinose segmentaire et focale de l'adulte (av.syndrome néphrotique).", 
-                                                 "Synd. néphrotique sévère avec sclérose focale (Pédiatrique, GN avec hyalinose segment. et focale de l'enfant)",
                                                  "Glomérulo. extra-membraneuse",
-                                                 "Glomérulo. membrano-prolif., type I (par immunofluo. et/ou microscopie électr. (hors codes 784 ou 789)",
-                                                 "Glomérulo. membrano-proliférative type II avec dépôts denses (prouvée par immunofluorescence et/ou microscopie électronique)",
-                                                 "Syndrome de Goodpasture",
-                                                 "Polyangéite microscopique et glomerulonephrite extracapillaires pauci-immune à ANCA",
-                                                 "Granulomatose de Wegener"), 
+                                                 "Synd. néphrotique sévère avec sclérose focale (Pédiatrique, GN avec hyalinose segment. et focale de l'enfant)"), 
                                 "gnc1", "gnc2")))
 
 irc.etude <- bind_rows(iga,diab,pkrd,gnc) 
@@ -245,27 +245,27 @@ Patients inclus :
 
 Gr 1 GNC :  
 - table dialyse :  
-"GN membrano-proliférative type 1",  
-"GN membrano-proliférative type 2, dépôts denses",  
 "GN extra-membraneuse",  
 "GN avec HSF"  
 - table greffe :  
 "Glomérulo. avec hyalinose segmentaire et focale de l'adulte (av.syndrome néphrotique).",  
 "Synd. néphrotique sévère avec sclérose focale (Pédiatrique, GN avec hyalinose segment. et focale de l'enfant)",  
 "Glomérulo. extra-membraneuse",  
-"Glomérulo. membrano-prolif., type I (par immunofluo. et/ou microscopie électr. (hors codes 784 ou 789)",  
-"Glomérulo. membrano-proliférative type II avec dépôts denses (prouvée par immunofluorescence et/ou microscopie électronique)",  
-"Syndrome de Goodpasture",  
-"Polyangéite microscopique et glomerulonephrite extracapillaires pauci-immune à ANCA",  
-"Granulomatose de Wegener"  
 
 Gr 2 GNC :  
 - table dialyse :  
 "Néphropathie lupique",  
 "Purpura rhumatoïde"  
+"GN membrano-proliférative type 1",  
+"GN membrano-proliférative type 2, dépôts denses",  
 - table greffe :  
 "Lupus érythémateux"  
 "Purpura rhumatoide"  
+"Glomérulo. membrano-prolif., type I (par immunofluo. et/ou microscopie électr. (hors codes 784 ou 789)",  
+"Glomérulo. membrano-proliférative type II avec dépôts denses (prouvée par immunofluorescence et/ou microscopie électronique)",  
+"Syndrome de Goodpasture",  
+"Polyangéite microscopique et glomerulonephrite extracapillaires pauci-immune à ANCA",  
+"Granulomatose de Wegener" 
 
 **XXXXX Incohérences entre table greffe et table dialyse :**  
 1 patient qui a les pathologies GN membrano-proliférative type 1 et Lupus érythémateux  
@@ -274,7 +274,7 @@ Gr 2 GNC :
 1 patient qui a les pathologies Néphropathie lupique et Glomérulo. membrano-prolif., type I (par immunofluo. et/ou microscopie électr. (hors codes 784 ou 789)  
 2 patient qui ont les pathologies GN extracapillaire ou endo/extracapillaire et Lupus érythémateux  
 
-**XXXXX Glomérulopathies des vascularites systémiques (purpura rhumatoïde exclu) se trouve dans "Maladies systémiques autres" qui avait été exclus. Faut-il les inclure ?**
+**XXXXX "Glomérulopathies des vascularites systémiques (purpura rhumatoïde exclu)" se trouve dans "Maladies systémiques autres" qui avait été exclus. Faut-il les inclure ?**
 
 # Incidence spatiale
 
@@ -295,25 +295,47 @@ En cours...
 
 # Description des caractéristiques démographiques des patients avec une néphropathie à IgA en comparaison avec 4 groupes 
 
-**XXXXX Voir ce que l'on faire des données manquantes (considéré comme 0, NA). De plus, les 1795 patients qui sont uniquement dans la table greffe n'ont pas ces infos**
+**XXXXX Voir ce que l'on faire des données manquantes (considéré comme 0, NA). De plus, les 1795 patients qui sont uniquement dans la table greffe n'ont pas ces infos**  
+**Géographie à faire**
 
 ```{r tableau 1, echo=FALSE, warning=FALSE, cache=TRUE, results="asis"}
 irc.etude %>%
   as.data.frame() %>%
   mutate(nephgp = factor(nephgp, levels = c("gnc", "gnc1", "gnc2", "APKD", "diabète"), labels = c("IgA", "GNC 1", "GNC 2", "PKRD", "Diabète")),
+         PBRn = factor(PBRn, labels = c("0","1","2"), levels = c("0","1","1")),
+         NBCS = cut(NBCS, breaks = c(0, 0.5, 2, 4, 6, max(NBCS, na.rm = T)), include.lowest = T) %>% factor(labels = c("0","1-2","3-4","5-6",">6")),
+         INSCn = factor(INSCn),
+         NOINSCn = factor(NOINSCn),
+         KCn = factor(KCn),
          DIABn = factor(DIABn),
          CIRHn = factor(CIRHn),
-         IDMn = factor(IDMn),
+         coronaropathie = ifelse(IDMn==1 | ICOROn==1, 1, 0) %>% factor(),
+         AMIn = ifelse(AMIn==1 | AMPn==1, 1, 0) %>% factor(),
+         ComorCV = ifelse(DIABn==1 | coronaropathie==1 | avc_ait==1 | AMIn==1 | ICn==1, 1, 0) %>% factor(),
          ICn = factor(ICn),
-         AMIn = factor(AMIn),
          avc_ait = factor(avc_ait),
          VIHn = factor(VIHn),
          VHBn = factor(VHBn),
          VHCn = factor(VHCn),
          TABACn = factor(TABACn),
+         TX_AUTRE = factor(TX_AUTRE),
+         ORG_Cn = factor(ORG_Cn),
+         ORG_CPn = factor(ORG_CPn),
+         ORG_Pn = factor(ORG_Pn),
+         ORG_Fn = factor(ORG_Fn),
+         ORG_PAn = factor(ORG_PAn),
+         ORG_ILn = factor(ORG_ILn),
+         ORG_In = factor(ORG_In),
+         ORG_MOn = factor(ORG_MOn),
+         EPOINIn = factor(EPOINIn),
          sex = factor(sex, labels = c("Homme", "Femme")),
          MARCHn = factor(MARCHn, labels = c("Incapacité totale","	Nécessité d une tierce personne","Marche autonome"))) %>% 
-  compareGroups(nephgp~age+sex+DIABn+CIRHn+IDMn+ICn+AMIn+avc_ait+VIHn+VHBn+VHCn+TABACn+MARCHn+ALBINI+HBINI+CREATINI+dfg, data = ., method = c(age = 2, CREATINI = 2), include.miss = T) %>%
+  compareGroups(nephgp ~ 
+                  age+sex+PBRn+bmi+NBCS+INSCn+NOINSCn+
+                  TABACn+MARCHn+CIRHn+KCn+VIHn+VHBn+VHCn+
+                  ComorCV+DIABn+coronaropathie+avc_ait+AMIn+ICn+
+                  TX_AUTRE+ORG_Cn+ORG_CPn+ORG_Pn+ORG_Fn+ORG_PAn+ORG_ILn+ORG_In+ORG_MOn+
+                  ALBINI+HBINI+EPOINIn+CREATINI+dfg, data = ., method = 4, include.miss = T) %>%
   createTable(show.all = T) %>%
   export2md()
 ```
@@ -343,16 +365,8 @@ Modèle 4 : modèle 3 + degré d’autonomie
 
 ### Hémodialyse vs greffe pré-emptive
 
-**J'ai comparé les PKRD aux autres groupes. Si on ne veut comparer que les IgA, ça donnerait le même résultat.**
-
-```{r multi_etats, echo=FALSE}
-# Visualisation des données
-# iga %>% select(METHOn, DDIRT, GRF1, ARF1, dgrf, temps_avant_changement, changement, kmdelaidc, kmdc, kmtx) %>% mutate(temps_avant_changement = round(temps_avant_changement/365.25, 1)) %>% View
-
-
-iga %>%
-  
-```
+**J'ai comparé les PKRD aux autres groupes. Si on ne veut comparer que les IgA, ça donnerait le même résultat.**  
+**Ces résultats ont comme référence la dialyse**
 
 **Sans ajustement**
 ```{r comparaison HD/G sans ajustement, message=FALSE, warning=FALSE}
@@ -453,7 +467,7 @@ cbind(or, int.conf, p.value) %>%
 
 **Modèle 2**
 
-**XXXXX Trop de données manquantes, 6478 patients supprimés. Peut-on considérer que les données manquantes pour le diabète, l'IC, l'avc et le cancer sont égales à 0 ? Ou on fait une imputation multiple ? Pour l'IMC on a 5857 données manquantes, à imputer ?**
+**XXXXX Trop de données manquantes, 4683 patients supprimés. Peut-on considérer que les données manquantes pour le diabète, l'IC, l'avc et le cancer sont égales à 0 ? Ou on fait une imputation multiple ? Pour l'IMC on a 4421 données manquantes, à imputer ?**
 
 ```{r comparaison HD/G modèle 2}
 # irc.etude %>%
@@ -462,7 +476,7 @@ cbind(or, int.conf, p.value) %>%
 #          METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
 #          sex = factor(sex, labels = c("Male", "Female")),
 #          anirt = factor(anirt),
-#          age = cut(age, breaks = c(0,40,200))) %>% 
+#          age = cut(age, breaks = c(0,40,200))) %>%
 #   glm(METHOn~nephgp+age+sex+anirt+DIABn+ICn+avc_ait+KCn+gr_bmi, data = ., family = "binomial") %>%
 #   summary()
 # 
@@ -472,7 +486,7 @@ cbind(or, int.conf, p.value) %>%
 #   mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
 #          METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
 #          sex = factor(sex, labels = c("Male", "Female")),
-#          anirt = factor(anirt)) %>% 
+#          anirt = factor(anirt)) %>%
 #   glm(METHOn~nephgp+age+sex+anirt+DIABn+ICn+avc_ait+KCn+gr_bmi, data = ., family = "binomial") %>%
 #   summary() %>%
 #   coef() %>%
@@ -649,9 +663,9 @@ cbind(or, int.conf, p.value) %>%
 
 # Etude de survie au stade de la dialyse
 
-
 ### Courbe de survie uniquement pour la néphropathie à IgA comparant l’hémodialyse, la dialyse péritonéale, et la greffe pré-emptive 
 
+**XXXXX Quelle catégorie mettre en référence ? Ajuster sur quelles variables ?**
 
 ```{r survie iga dialyse_greffe}
 par(mar = c(4,4,0,0.3))
@@ -665,7 +679,8 @@ legend(2, 0.7, legend = c("Dialyse péritonéale", "Greffe préemptive", "Hémod
 iga %>%
   mutate(kmdelaidc = as.numeric(kmdelaidc),
          METHOn = relevel(as.factor(METHOn), ref = "Hémodialyse")) %>%
-  coxph(Surv(kmdelaidc/365.25, kmdc)~METHOn+sex, data = .)
+  coxph(Surv(kmdelaidc/365.25, kmdc)~METHOn, data = .) %>%
+  summary()
 
 # Conditions de validité
 print("Conditions de validités")
@@ -676,7 +691,30 @@ iga %>%
   cox.zph()
 ```
 
-**XXXXX Quelle catégorie mettre en référence ? Ajuster sur quels variables ? Sachant que pour les patients uniquement greffés on n'a pas l'âge, le sexe, etc.**
+```{r multi_etats IgA survie selon suppleance, echo=FALSE}
+# Visualisation des données
+# iga %>% select(METHOn, DDIRT, GRF1, ARF1, dgrf, temps_avant_changement, changement, kmdelaidc, kmdc, kmtx) %>% View
+
+# Fine-Gray pour le décès
+iga %>%
+  mutate(METHOn = relevel(as.factor(METHOn), ref = "Hémodialyse"),
+         etime = ifelse(changement==0, kmdelaidc, temps_avant_changement),
+         event = ifelse(changement==0, 2*kmdc, 1) %>% factor(0:2, labels = c("censure","changement","deces"))) %>%
+  finegray(Surv(etime, event) ~ METHOn, data = ., etype = "deces") %>%  
+  coxph(Surv(fgstart, fgstop, fgstatus) ~ METHOn, data = ., weight = fgwt) %>%
+  summary()
+
+# Aalen-Johansen
+iga %>%
+  mutate(METHOn = relevel(as.factor(METHOn), ref = "Hémodialyse"),
+         etime = ifelse(changement==0, kmdelaidc, temps_avant_changement),
+         event = ifelse(changement==0, 2*kmdc, 1) %>% factor(0:2, labels = c("censure","changement","deces"))) %>% 
+  tmerge(., ., id=RREC_COD, ajdeces = event(kmdelaidc, kmdc), ajchangement = event(temps_avant_changement, changement)) %>% 
+  tmerge(., ., id, enum = cumtdc(tstart)) %>% 
+  mutate(event = ifelse(ajchangement==0, 2*kmdc, 1) %>% factor(0:2, labels = c("censure","changement","deces"))) %>% print
+  coxph(Surv(tstart, tstop, event=="deces")~METHOn+cluster(id), data = .) %>%
+  summary()
+```
 
 ### Courbe de survie uniquement pour la néphropathie à IgA comparant l’hémodialyse sans greffe, greffe dans la 1 ère année de dialyse, greffe dans la 2 ème année de dialyse, greffe dans la 3 ème année de dialyse
 
@@ -724,7 +762,7 @@ irc.etude %>%
   survfit(Surv(kmdelaidc/365.25, kmdc)~nephgp, data = .) %>% 
   plot(xlab= "Temps (années)", ylab = "Survie", col = brewer.pal(5, "Dark2"), xlim = c(0,7))
 legend(1, 0.6, legend = c("PKRD", "Diabète", "IgA", "GNC1", "GNC2"), col = brewer.pal(6, "Dark2"), lty = 1)
-text(5, 0.4, "Médiane diabète = 5.42 ans")
+text(5, 0.4, "Médiane diabète = 5.16 ans")
 
 # Modèle de Cox
 irc.etude %>%
@@ -737,6 +775,29 @@ irc.etude %>%
   mutate(nephgp = relevel(factor(nephgp), ref = "gnc")) %>%
   coxph(Surv(kmdelaidc/365.25, kmdc)~nephgp, data = .) %>%
   cox.zph() 
+```
+
+```{r multi_etats survie selon suppleance, echo=FALSE}
+# Visualisation des données
+# irc.etude %>% select(METHOn, DDIRT, GRF1, ARF1, dgrf, temps_avant_changement, changement, kmdelaidc, kmdc, kmtx) %>% View
+
+# Fine-Gray pour le changement
+irc.etude %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "gnc"),
+         etime = ifelse(changement==0, kmdelaidc, temps_avant_changement),
+         event = ifelse(changement==0, 2*kmdc, 1) %>% factor(0:2, labels = c("censure","changement","deces"))) %>% 
+  finegray(Surv(etime, event) ~ ., data = ., etype = "changement") %>% 
+  coxph(Surv(fgstart, fgstop, fgstatus) ~ nephgp, data = ., weight = fgwt) %>%
+  summary()
+
+# Fine-Gray pour le décès
+irc.etude %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "gnc"),
+         etime = ifelse(changement==0, kmdelaidc, temps_avant_changement),
+         event = ifelse(changement==0, 2*kmdc, 1) %>% factor(0:2, labels = c("censure","changement","deces"))) %>% 
+  finegray(Surv(etime, event) ~ ., data = ., etype = "deces") %>% 
+  coxph(Surv(fgstart, fgstop, fgstatus) ~ nephgp, data = ., weight = fgwt) %>%
+  summary()
 ```
 
 ```{r comparaison survie entre les 5 groupes, fig.width=8, fig.height=11}
