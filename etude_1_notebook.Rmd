@@ -667,30 +667,6 @@ cbind(or, int.conf, p.value) %>%
 
 **XXXXX Quelle catégorie mettre en référence ? Ajuster sur quelles variables ?**
 
-```{r survie iga dialyse_greffe}
-par(mar = c(4,4,0,0.3))
-iga %>%
-  mutate(kmdelaidc = as.numeric(kmdelaidc)) %>%
-  survfit(Surv(kmdelaidc/365.25, kmdc)~METHOn, data = .) %>% 
-  plot(xlab= "Temps (années)", ylab = "Survie", col = c("blue","black","red"), xlim = c(0,7))
-legend(2, 0.7, legend = c("Dialyse péritonéale", "Greffe préemptive", "Hémodialyse"), col = c("blue","black","red"), lty = 1)
-
-# Modèle de Cox
-iga %>%
-  mutate(kmdelaidc = as.numeric(kmdelaidc),
-         METHOn = relevel(as.factor(METHOn), ref = "Hémodialyse")) %>%
-  coxph(Surv(kmdelaidc/365.25, kmdc)~METHOn, data = .) %>%
-  summary()
-
-# Conditions de validité
-print("Conditions de validités")
-iga %>%
-  mutate(kmdelaidc = as.numeric(kmdelaidc),
-         METHOn = relevel(as.factor(METHOn), ref = "Hémodialyse")) %>%
-  coxph(Surv(kmdelaidc/365.25, kmdc)~METHOn, data = .) %>%
-  cox.zph()
-```
-
 ```{r multi_etats IgA survie selon suppleance, echo=FALSE}
 # Visualisation des données
 # iga %>% select(METHOn, DDIRT, GRF1, ARF1, dgrf, temps_avant_changement, changement, kmdelaidc, kmdc, kmtx) %>% View
@@ -700,57 +676,104 @@ iga %>%
   mutate(METHOn = relevel(as.factor(METHOn), ref = "Hémodialyse"),
          etime = ifelse(changement==0, kmdelaidc, temps_avant_changement),
          event = ifelse(changement==0, 2*kmdc, 1) %>% factor(0:2, labels = c("censure","changement","deces"))) %>%
-  finegray(Surv(etime, event) ~ METHOn, data = ., etype = "deces") %>%  
-  coxph(Surv(fgstart, fgstop, fgstatus) ~ METHOn, data = ., weight = fgwt) %>%
-  summary()
+  finegray(Surv(etime, event) ~ METHOn, data = ., etype = "deces") %>% 
+  survfit(Surv(fgstart/365.25, fgstop/365.25, fgstatus)~METHOn, data = ., weight = fgwt) %>% 
+  plot(main = "Fine-Gray", xlab= "Temps (années)", ylab = "Survie", col = c("red","blue","black"), xlim = c(0,7))
+legend(2, 0.7, legend = c("Hémodialyse", "Dialyse péritonéale", "Greffe préemptive"), col = c("red","blue","black"), lty = 1)
 
-# Aalen-Johansen
 iga %>%
   mutate(METHOn = relevel(as.factor(METHOn), ref = "Hémodialyse"),
          etime = ifelse(changement==0, kmdelaidc, temps_avant_changement),
-         event = ifelse(changement==0, 2*kmdc, 1) %>% factor(0:2, labels = c("censure","changement","deces"))) %>% 
-  tmerge(., ., id=RREC_COD, ajdeces = event(kmdelaidc, kmdc), ajchangement = event(temps_avant_changement, changement)) %>% 
-  tmerge(., ., id, enum = cumtdc(tstart)) %>% 
-  mutate(event = ifelse(ajchangement==0, 2*kmdc, 1) %>% factor(0:2, labels = c("censure","changement","deces"))) %>% print
-  coxph(Surv(tstart, tstop, event=="deces")~METHOn+cluster(id), data = .) %>%
+         event = ifelse(changement==0, 2*kmdc, 1) %>% factor(0:2, labels = c("censure","changement","deces"))) %>%
+  finegray(Surv(etime, event) ~ METHOn, data = ., etype = "deces") %>% 
+  coxph(Surv(fgstart/365.25, fgstop/365.25, fgstatus)~METHOn, data = ., weight = fgwt) %>%
   summary()
+
+# iga %>%
+#   mutate(kmdelaidc = as.numeric(kmdelaidc)) %>%
+#   survfit(Surv(kmdelaidc/365.25, kmdc)~METHOn, data = .) %>% 
+#   plot(main = "Sans ajustement", xlab= "Temps (années)", ylab = "Survie", col = c("blue","black","red"), xlim = c(0,7))
+# legend(2, 0.7, legend = c("Dialyse péritonéale", "Greffe préemptive", "Hémodialyse"), col = c("blue","black","red"), lty = 1)
+
+
+# Aalen-Johansen
+# iga %>%
+#   mutate(METHOn = relevel(as.factor(METHOn), ref = "Hémodialyse"),
+#          etime = ifelse(changement==0, kmdelaidc, temps_avant_changement),
+#          event = ifelse(changement==0, 2*kmdc, 1) %>% factor(0:2, labels = c("censure","changement","deces"))) %>% 
+#   tmerge(., ., id=RREC_COD, ajdeces = event(kmdelaidc, kmdc), ajchangement = event(temps_avant_changement, changement)) %>% 
+#   tmerge(., ., id, enum = cumtdc(tstart)) %>% 
+#   mutate(event = ifelse(ajchangement==0, 2*kmdc, 1) %>% factor(0:2, labels = c("censure","changement","deces"))) %>% 
+#   coxph(Surv(tstart, tstop, ajdeces)~METHOn+ajchangement+cluster(id), data = .) 
 ```
+
+```{r score propension sur inscription liste de greffe, include=FALSE}
+iga %>%
+  mutate(x = as.numeric(DINSCMED - DDIRT, units = "days")/365.25) %>% 
+  ggplot(aes(x)) + 
+  geom_histogram(fill = "white", col = "black") +
+  ggtitle("Durée entre suppléance et inscription liste greffe\n (droite = inscription post-suppléance)") +
+  xlab("Temps (années)")
+
+
+```
+
 
 ### Courbe de survie uniquement pour la néphropathie à IgA comparant l’hémodialyse sans greffe, greffe dans la 1 ère année de dialyse, greffe dans la 2 ème année de dialyse, greffe dans la 3 ème année de dialyse
 
 **Le point 0 est le point de greffe, mais les patient qui ont survécu suffisamment longtemps pour avoir une greffe sont peut-être plus "résistants" et peuvent mourir moins vite ?**
 
 ```{r survie iga greffe graphique}
-par(mar = c(4,4,0,0.3))
+par(mar = c(4,4,1,0.3))
+# Prise en compte du biais d'immortalité en prenant 0 comme premier jour de greffe
 iga %>%
   filter(dgrf < as.Date("2016-12-01") | is.na(dgrf)) %>%
   mutate(kmdelaidc = ifelse(!is.na(delaitx), kmdelaidc - (delaitx * 30.2), kmdelaidc)) %>%
   survfit(Surv(kmdelaidc/365.25, kmdc)~gr_delai_greffe, data = .) %>%
-  plot(xlab= "Temps (années)", ylab = "Survie", col = c("black", "green", "orange", "red","blue"), xlim = c(0,7), ylim = c(0.5,1))
+  plot(xlab= "Temps (années)", ylab = "Survie", col = c("black", "green", "orange", "red","blue"), xlim = c(0,7), ylim = c(0,1), main = "Point 0 = date de greffe")
 legend(1, 0.7, legend = c("Aucune greffe", "1ère année", "2e année", "3e année","préemptive"), col = c("black", "green", "orange", "red","blue"), lty = 1)
-```
 
-```{r survie iga greffe cox}
-# # Modèle de Cox
-# iga %>%
-#   mutate(kmdelaidc = as.numeric(kmdelaidc),
-#          gr_delai_greffe = relevel(as.factor(gr_delai_greffe), ref = "0")) %>%
-#   coxph(Surv(kmdelaidc/365.25, kmdc)~gr_delai_greffe+sex, data = .)
-# 
-# # Conditions de validité
-# print("Conditions de validités")
-# iga %>%
-#   mutate(kmdelaidc = as.numeric(kmdelaidc),
-#          gr_delai_greffe = relevel(as.factor(gr_delai_greffe), ref = "0")) %>%
-#   coxph(Surv(kmdelaidc/365.25, kmdc)~gr_delai_greffe+sex, data = .) %>%
-#   cox.zph()
+# Modèle de Cox
+iga %>%
+  filter(dgrf < as.Date("2016-12-01") | is.na(dgrf)) %>%
+  mutate(kmdelaidc = ifelse(!is.na(delaitx), kmdelaidc - (delaitx * 30.2), kmdelaidc),
+         gr_delai_greffe = factor(gr_delai_greffe)) %>%
+  coxph(Surv(kmdelaidc/365.25, kmdc)~gr_delai_greffe, data = .) %>%
+  summary()
+
+
+
+# Sans ajustement
+iga %>%
+  filter(dgrf < as.Date("2016-12-01") | is.na(dgrf)) %>%
+  survfit(Surv(kmdelaidc/365.25, kmdc)~gr_delai_greffe, data = .) %>%
+  plot(xlab= "Temps (années)", ylab = "Survie", col = c("black", "green", "orange", "red","blue"), xlim = c(0,7), ylim = c(0,1), main = "Sans ajustement")
+legend(1, 0.7, legend = c("Aucune greffe", "1ère année", "2e année", "3e année","préemptive"), col = c("black", "green", "orange", "red","blue"), lty = 1)
+
+iga %>%
+  filter(dgrf < as.Date("2016-12-01") | is.na(dgrf)) %>%
+  mutate(gr_delai_greffe = factor(gr_delai_greffe)) %>%
+  coxph(Surv(kmdelaidc/365.25, kmdc)~gr_delai_greffe, data = .) %>%
+  summary()
+
+
+
+# Variable dépendante du temps
+iga %>%
+  filter(dgrf < as.Date("2016-12-01") | is.na(dgrf)) %>%
+  mutate(METHOn = relevel(as.factor(METHOn), ref = "Hémodialyse"),
+         etime = ifelse(changement==0, kmdelaidc, temps_avant_changement),
+         event = ifelse(changement==0, 2*kmdc, 1) %>% factor(0:2, labels = c("censure","changement","deces")),
+         gr_delai_greffe = factor(gr_delai_greffe)) %>% 
+  tmerge(., ., id=RREC_COD, ajdeces = event(kmdelaidc, kmdc), ajchangement = event(temps_avant_changement, changement)) %>% 
+  tmerge(., ., id, enum = cumtdc(tstart)) %>% 
+  mutate(event = ifelse(ajchangement==0, 2*kmdc, 1) %>% factor(0:2, labels = c("censure","changement","deces"))) %>% 
+  survfit(Surv(tstart, tstop, event)~gr_delai_greffe+cluster(id), data = .) 
 ```
 
 **XXXXX Pas beaucoup de patients décédés**
 
-```{r deces selon moment de la greffe}
-# iga %>% filter(kmdc==1) %>% select(gr_delai_greffe) %>% table(useNA = "ifany")
-```
+
 
 
 ### Courbe de survie globale (HD, DP, et greffe pré-emptive) comparant la néphropathie à IgA avec les 4 groupes
