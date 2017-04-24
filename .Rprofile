@@ -1,0 +1,17 @@
+if (interactive()) {
+library(knitr)
+library(stats)
+library(readr)
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(gplots)
+library(ggplot2)
+library(broom)
+library(sp)
+library(rgdal)
+library(RColorBrewer)
+library(classInt)
+library(epitools)
+library(compareGroups)
+} else {}
