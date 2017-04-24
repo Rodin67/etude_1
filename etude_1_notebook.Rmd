@@ -1,8 +1,12 @@
 ---
 title: "Etude 1"
 output:
-  html_document: default
-  html_notebook: default
+  html_document: 
+    toc: true
+    toc_depth: 2
+  html_notebook:
+    toc: true
+    toc_depth: 2
   pdf_document: default
   word_document: default
 ---
@@ -30,10 +34,32 @@ library(compareGroups)
 
 ```{r importation, include=FALSE, cache=TRUE}
 irc.greffe <- read_delim("./data/irc.greffe.csv", 
-    ";", escape_double = FALSE, trim_ws = TRUE, locale = locale(encoding = "latin1", decimal_mark = ",")) %>% 
+                         ";", escape_double = FALSE, trim_ws = TRUE, locale = locale(encoding = "latin1", decimal_mark = ",")) %>% 
   mutate(gr_bmi = factor(gr_bmi, levels = c("<18.5", "18.5-24.9", "25-29.9", "30-34.9", ">35")),
          ddc = as.Date(ddc, "%d/%m/%Y"),
          DECES1 = as.Date(DECES1, "%d/%m/%Y"))
+
+comor <- read_delim("./data/cmbdt_tx.csv", 
+                    ";", escape_double = FALSE, col_types = cols(creat_TX = col_double()), 
+                    trim_ws = TRUE) 
+
+irc.greffe <- comor %>%
+  right_join(irc.greffe, by = "RREC_COD") %>%
+  mutate(PDS = ifelse(is.na(PDS), poids_att, PDS),
+         TAIL = ifelse(is.na(TAIL), taille_att, TAIL),
+         DIABn = ifelse(is.na(DIABn), DIAB, DIABn),
+         ICn = ifelse(is.na(ICn), INSCARD, ICn),
+         AVCn = ifelse(is.na(AVCn), ATCD_AVC, AVCn),
+         CREATINI = ifelse(is.na(CREATINI), creat_TX, CREATINI),
+         AMIn = ifelse(is.na(AMIn), AMI, AMIn),
+         IRCn = ifelse(is.na(IRCn), INSRESP, IRCn),
+         IDMn = ifelse(is.na(IDMn), ATCD_IDM, IDMn),
+         ICOROn = ifelse(is.na(ICOROn), INSCORON, ICOROn),
+         dfg = ifelse(sex==1, 
+                 round(186.3*(CREATINI/88.4)^-1.154 * (age)^-0.203,2), 
+                 round(186.3*(CREATINI/88.4)^-1.154 * (age)^-0.203 * 0.742,2)),
+         bmi = round(PDS/((TAIL*0.01)^2), 1),
+         avc_ait = ifelse(AVCn==1 | AITn==1, 1, 0))
 
 
 # irc.delai <- read_delim("./data/irc.delai2015.csv",
@@ -235,7 +261,10 @@ carte_dep$dep <- sort(dep@data$NOM_DEPT)
 dep@data <- left_join(dep@data, carte_dep, by = c("NOM_DEPT" = "dep"))
 ```
 
-Patients inclus :  
+# Infos {.tabset .tabset-fade .tabset-pills}
+
+## Patients inclus 
+
 - Suppléance entre 01/01/2010 et 31/12/2014  
 - IgA avec biopsie  
 - diabète avec et sans biopsie  
@@ -243,7 +272,8 @@ Patients inclus :
 - gnc avec biopsie  
 - patients greffé dès le départ inclus malgré l'absence de biopsies  
 
-Gr 1 GNC :  
+## Gr 1 GNC 
+
 - table dialyse :  
 "GN extra-membraneuse",  
 "GN avec HSF"  
@@ -252,7 +282,8 @@ Gr 1 GNC :
 "Synd. néphrotique sévère avec sclérose focale (Pédiatrique, GN avec hyalinose segment. et focale de l'enfant)",  
 "Glomérulo. extra-membraneuse",  
 
-Gr 2 GNC :  
+## Gr 2 GNC 
+
 - table dialyse :  
 "Néphropathie lupique",  
 "Purpura rhumatoïde"  
@@ -267,16 +298,15 @@ Gr 2 GNC :
 "Polyangéite microscopique et glomerulonephrite extracapillaires pauci-immune à ANCA",  
 "Granulomatose de Wegener" 
 
-**XXXXX Incohérences entre table greffe et table dialyse :**  
-1 patient qui a les pathologies GN membrano-proliférative type 1 et Lupus érythémateux  
+## Incohérences entre table greffe et table dialyse 
+
 1 patient qui a les pathologies GN extra-membraneuse et Lupus érythémateux  
 1 patient qui a les pathologies Néphropathie lupique et Glomérulo. avec hyalinose segmentaire et focale de l'adulte (av.syndrome néphrotique).  
 1 patient qui a les pathologies Néphropathie lupique et Glomérulo. membrano-prolif., type I (par immunofluo. et/ou microscopie électr. (hors codes 784 ou 789)  
-2 patient qui ont les pathologies GN extracapillaire ou endo/extracapillaire et Lupus érythémateux  
 
 **XXXXX "Glomérulopathies des vascularites systémiques (purpura rhumatoïde exclu)" se trouve dans "Maladies systémiques autres" qui avait été exclus. Faut-il les inclure ?**
 
-# Incidence spatiale
+# Incidence spatiale 
 
 ```{r carte France, echo=FALSE, cache=TRUE}
 classTemps <- classIntervals(dep@data$annuel, 9, style = "quantile")
@@ -290,6 +320,8 @@ legend("bottomleft", legend = legende, fill = palette, cex=0.95, title = "Incide
 ```
 
 # Incidence temporelle
+
+**Qu'est-ce qu'on y met ?**
 
 En cours...
 
@@ -340,7 +372,6 @@ irc.etude %>%
   export2md()
 ```
 
-
 # Description des modalités de traitements de l’IRCT des patients avec une néphropathie à IgA en comparaison avec 4 groupes 
 
 ```{r tableau 2, echo=FALSE, warning=FALSE, cache=TRUE, results="asis"}
@@ -353,39 +384,99 @@ irc.etude %>%
   export2md()
 ```
 
-
-
-# Comparer de l’accessibilité aux différents traitements de l’IRCT en prenant comme groupe de référence la polykystose rénale 
+# Comparer de l’accessibilité aux différents traitements de l’IRCT en prenant comme groupe de référence la polykystose rénale {.tabset .tabset-fade .tabset-pills}
 
 Modèle 1 : âge, sexe, année de début de l’hémodialyse  
 Modèle 2 : modèle 1 + comorbidités : diabètes, insuffisance cardiaque, AVC, Cancer, BMI  
 Modèle 3 : modèle 2 + hémoglobine, créatinine, albumine  
 Modèle 4 : modèle 3 + degré d’autonomie  
 
-
-### Hémodialyse vs greffe pré-emptive
-
 **J'ai comparé les PKRD aux autres groupes. Si on ne veut comparer que les IgA, ça donnerait le même résultat.**  
-**Ces résultats ont comme référence la dialyse**
+**Ces résultats ont comme référence la dialyse**  
+**XXXXX Trop de données manquantes. Peut-on considérer que les données manquantes pour le diabète, l'IC, l'avc et le cancer sont égales à 0 ? Ou on fait une imputation multiple ? Pour l'IMC on a 4421 données manquantes, à imputer ? Les résultats ci-dessous sont après imputation.**  
+**Prendre lâge en binaire coupé à 40 ans ?**  
+**gnc=IgA**
+
+## Hémodialyse vs greffe pré-emptive
+
+```{r imputation, include=FALSE}
+library(mice)
+
+irc.selec <- irc.etude %>%
+  select(RREC_COD, NEPH_LIB, CREATINI, ALBINI,	HBINI, NBCS, KTTINIn, EPOINIn, PBRn, ACTIVn,	liste_longue,	nephgp,	NBSCEAN,	VOLDP,	METHOn,	VAVn,	traitement,	DRSCmin,	IDEn,	PDS,	TAIL,	DIABn,	INSULn,	IRCn,	O2n,	ICn,	ICOROn,	IDMn,	RYTHMn,	ANEVn,	AMIn,	KCn,	VHBn,	VHCn,	CIRHn,	VIHn,	SIDAn,	TX_AUTRE,	ORG_Cn,	ORG_CPn,	ORG_Pn,	ORG_Fn,	ORG_PAn,	ORG_ILn,	ORG_In,	ORG_MOn,	HANDn,	AMPn,	PLEGn,	CECITEn,	COMPORTn,	INSCn,	TYPDIABn,	STADICn,	STDAMIn,	STDCIRHn,	TABACn,	NOINSCn,	MARCHn,	anirt,	sex,	age,	agegp,	classage,	bmi, RES_DEP_LIB,	RES_REG_LIB,	dc,	tx,	delaidc,	delaitx,	delailna,	delai_dernouv,	DATE_EVT,	FAV_DATE,	DDIRT,	DNAIS,	DINSCMED,	dgrf,	dsvr,	ddc,	dpdv,	DATE_DERNOUV,	gr_HBINI,	dfg,	urg_rea,	gr_bmi,	iga,	diab,	pkrd,	gnc,	LMALADI,	GRF1,	annee1,	mois1,	GRF2,	annee2,	mois2,	GRF3,	annee3,	mois3,	ARF1,	ARF2,	ECHEC1,	ECHEC2,	DECES1,	DECES2,	NOUV1,	NOUV2,	DELAIARF1,	DELAIARF2,	DELAIDC1,	DELAIDC2,	DELAINOUV1,	DELAINOUV2,	greffe,	kmdc,	kmdelaidc,	gr_METHOn,	greffe_METHOn,	date_greffe, avc_ait)
+
+init <-  irc.selec %>%
+  mice(maxit=0) 
+meth <- init$method
+predM <- init$predictorMatrix
+
+# On n'impute pas les variables avec plus de 20% de données manquantes sauf HBINI, CREATINI, ALBINI qui sont dans les modèles
+meth[c("RREC_COD", "NEPH_LIB", "CREATINI", "ALBINI", "HBINI", "NBCS", "PBRn", "ACTIVn", "VOLDP", "METHOn", "IDEn", "INSULn", "ANEVn", "delaidc", "delaitx", "delailna", "delai_dernouv", "DATE_EVT", "FAV_DATE", "DDIRT", "DNAIS",	"DINSCMED",	"dgrf", "dsvr", "ddc", "dpdv", "DATE_DERNOUV", "dfg", "iga", "diab", "pkrd", "gnc", "LMALADI", "GRF1",	"annee1",	"mois1",	"GRF2",	"annee2",	"mois2",	"GRF3",	"annee3",	"mois3",	"ARF1",	"ARF2",	"ECHEC1",	"ECHEC2",	"DECES1",	"DECES2",	"NOUV1",	"NOUV2",	"DELAIARF1",	"DELAIARF2",	"DELAIDC1",	"DELAIDC2",	"DELAINOUV1",	"DELAINOUV2")] <- ""
+predM[,c("RREC_COD", "DATE_EVT", "FAV_DATE", "DDIRT", "DNAIS",	"DINSCMED",	"dgrf", "dsvr", "ddc", "dpdv", "DATE_DERNOUV", "GRF1",	"annee1",	"mois1",	"GRF2",	"annee2",	"mois2",	"GRF3",	"annee3",	"mois3",	"ARF1",	"ARF2",	"ECHEC1",	"ECHEC2",	"DECES1",	"DECES2",	"NOUV1",	"NOUV2")] <- 0
+
+irc.complet <- irc.selec %>%
+  mice(m = 1, method = meth, maxit = 5, predictorMatrix = predM) %>%
+  complete()
+detach(package:mice)
+```
+
+```{r modeles HD vs Greffe, include=FALSE}
+modele.0.gr <- irc.complet %>%
+  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female")),
+         anirt = factor(anirt),
+         age = cut(age, breaks = c(0,40,200))) %>% 
+  glm(METHOn~nephgp, data = ., family = "binomial")
+
+modele.1.gr <- irc.complet %>%
+  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female")),
+         anirt = factor(anirt),
+         age = cut(age, breaks = c(0,40,200))) %>% 
+  glm(METHOn~nephgp+age+sex+anirt, data = ., family = "binomial")
+
+modele.2.gr <- irc.complet %>%
+  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female")),
+         anirt = factor(anirt),
+         age = cut(age, breaks = c(0,40,200))) %>% 
+  glm(METHOn~nephgp+age+sex+anirt+DIABn+ICn+avc_ait+KCn+gr_bmi, data = ., family = "binomial")
+
+modele.3.gr <- irc.complet %>%
+  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female")),
+         anirt = factor(anirt),
+         age = cut(age, breaks = c(0,40,200))) %>% 
+  glm(METHOn~nephgp+age+sex+anirt+HBINI+CREATINI+ALBINI, data = ., family = "binomial")
+
+modele.4.gr <- irc.complet %>%
+  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female")),
+         anirt = factor(anirt),
+         age = cut(age, breaks = c(0,40,200))) %>% 
+  glm(METHOn~nephgp+age+sex+anirt+MARCHn, data = ., family = "binomial")
+```
 
 **Sans ajustement**
 ```{r comparaison HD/G sans ajustement, message=FALSE, warning=FALSE}
-p.value <- irc.etude %>%
-  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
-  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1)) %>% 
-  glm(METHOn~nephgp, data = ., family = "binomial") %>%
+p.value <- modele.0.gr %>%
   summary() %>%
   coef() %>% 
   as.data.frame() %>%
   select(`Pr(>|z|)`) %>%
   round(3)
 
-or <- irc.etude %>%
-  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
-  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1)) %>% 
-  glm(METHOn~nephgp, data = ., family = "binomial") %>% 
+or <- modele.0.gr %>% 
   summary() %>% 
   coef() %>%  
   as.data.frame() %>% 
@@ -393,11 +484,7 @@ or <- irc.etude %>%
   exp() %>% 
   round(3)
 
-int.conf <- irc.etude %>%
-  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
-  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1)) %>% 
-  glm(METHOn~nephgp, data = ., family = "binomial") %>% 
+int.conf <- modele.0.gr %>% 
   confint() %>% 
   exp()  %>%
   round(3) %>%
@@ -417,24 +504,14 @@ cbind(or, int.conf, p.value) %>%
 
 **Modèle 1**
 ```{r comparaison HD/G modèle 1, message=FALSE, warning=FALSE}
-p.value <- irc.etude %>%
-  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
-  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
-         sex = factor(sex, labels = c("Male", "Female"))) %>% 
-  glm(METHOn~nephgp+age+sex+anirt, data = ., family = "binomial") %>%
+p.value <- modele.1.gr %>%
   summary() %>%
   coef() %>% 
   as.data.frame() %>%
   select(`Pr(>|z|)`) %>%
   round(3)
 
-or <- irc.etude %>%
-  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
-  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
-         sex = factor(sex, labels = c("Male", "Female"))) %>% 
-  glm(METHOn~nephgp+age+sex+anirt, data = ., family = "binomial") %>% 
+or <- modele.1.gr %>% 
   summary() %>% 
   coef() %>%  
   as.data.frame() %>% 
@@ -442,12 +519,7 @@ or <- irc.etude %>%
   exp() %>% 
   round(3)
 
-int.conf <- irc.etude %>%
-  filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
-  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
-         sex = factor(sex, labels = c("Male", "Female"))) %>% 
-  glm(METHOn~nephgp+age+sex+anirt, data = ., family = "binomial") %>% 
+int.conf <- modele.1.gr %>% 
   confint() %>% 
   exp()  %>%
   round(3) %>%
@@ -461,112 +533,174 @@ cbind(or, int.conf, p.value) %>%
          IC.inf = `2.5 %`,
          IC.sup = `97.5 %`,
          p = `Pr(>|z|)`) %>%
-  mutate(Groupe = c("Intercept","Diabète","IgA","GNC 1","GNC 2","Age","Sexe Femme","Annee")) %>%
   kable()
 ```
 
 **Modèle 2**
-
-**XXXXX Trop de données manquantes, 4683 patients supprimés. Peut-on considérer que les données manquantes pour le diabète, l'IC, l'avc et le cancer sont égales à 0 ? Ou on fait une imputation multiple ? Pour l'IMC on a 4421 données manquantes, à imputer ?**
-
-```{r comparaison HD/G modèle 2}
-# irc.etude %>%
-#   filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
-#   mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-#          METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
-#          sex = factor(sex, labels = c("Male", "Female")),
-#          anirt = factor(anirt),
-#          age = cut(age, breaks = c(0,40,200))) %>%
-#   glm(METHOn~nephgp+age+sex+anirt+DIABn+ICn+avc_ait+KCn+gr_bmi, data = ., family = "binomial") %>%
-#   summary()
-# 
-# print("OR des estimate")
-# irc.etude %>%
-#   filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
-#   mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-#          METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
-#          sex = factor(sex, labels = c("Male", "Female")),
-#          anirt = factor(anirt)) %>%
-#   glm(METHOn~nephgp+age+sex+anirt+DIABn+ICn+avc_ait+KCn+gr_bmi, data = ., family = "binomial") %>%
-#   summary() %>%
-#   coef() %>%
-#   exp()
-```
-
-**Modèle 3**
-
-**XXXXX Pareil pour les données manquantes.**
-
-```{r comparaison HD/G modèle 3}
-# irc.etude %>%
-#   filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
-#   mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-#          METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
-#          sex = factor(sex, labels = c("Male", "Female")),
-#          anirt = factor(anirt)) %>% 
-#   glm(METHOn~nephgp+age+sex+anirt+HBINI+CREATINI+ALBINI, data = ., family = "binomial") %>%
-#   summary()
-# 
-# print("OR des estimate")
-# irc.etude %>%
-#   filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
-#   mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-#          METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
-#          sex = factor(sex, labels = c("Male", "Female")),
-#          anirt = factor(anirt)) %>% 
-#   glm(METHOn~nephgp+age+sex+anirt+HBINI+CREATINI+ALBINI, data = ., family = "binomial") %>%
-#   summary() %>%
-#   coef() %>%
-#   exp()
-```
-
-**Modèle 4**
-
-**XXXXX Pareil pour les données manquantes.**
-
-```{r comparaison HD/G modèle 4}
-# irc.etude %>%
-#   filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
-#   mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-#          METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
-#          sex = factor(sex, labels = c("Male", "Female")),
-#          anirt = factor(anirt)) %>% 
-#   glm(METHOn~nephgp+age+sex+anirt+MARCHn, data = ., family = "binomial") %>%
-#   summary()
-# 
-# print("OR des estimate")
-# irc.etude %>%
-#   filter(METHOn %in% c("Hémodialyse", "Greffe")) %>%
-#   mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-#          METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
-#          sex = factor(sex, labels = c("Male", "Female")),
-#          anirt = factor(anirt)) %>% 
-#   glm(METHOn~nephgp+age+sex+anirt+MARCHn, data = ., family = "binomial") %>%
-#   summary() %>%
-#   coef() %>%
-#   exp()
-```
-
-### Hémodialyse vs dialyse péritonéale
-
-**Sans ajustement**
-```{r comparaison HD/DP sans ajustement, echo=FALSE, message=FALSE, warning=FALSE}
-p.value <- irc.etude %>%
-  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
-  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1)) %>% 
-  glm(METHOn~nephgp, data = ., family = "binomial") %>%
+```{r comparaison HD/G modèle 2, message=FALSE, warning=FALSE}
+p.value <- modele.2.gr %>%
   summary() %>%
   coef() %>% 
   as.data.frame() %>%
   select(`Pr(>|z|)`) %>%
   round(3)
 
-or <- irc.etude %>%
+or <- modele.2.gr %>%
+  summary() %>%
+  coef() %>% 
+  as.data.frame() %>% 
+  select(Estimate) %>%
+  exp() %>% 
+  round(3)
+
+int.conf <- modele.2.gr %>%
+  confint() %>% 
+  exp()  %>%
+  round(3) %>%
+  as.data.frame()
+
+cbind(or, int.conf, p.value) %>% 
+  as.data.frame() %>%
+  add_rownames() %>%
+  rename(Groupe = rowname,
+         OR = Estimate,
+         IC.inf = `2.5 %`,
+         IC.sup = `97.5 %`,
+         p = `Pr(>|z|)`) %>%
+  kable()
+```
+
+**Modèle 3**
+
+**XXXXX Données manquantes pour HBINI, CREATINI et ALBINI et plus de 20 % manquantes. Faut-il imputer ? Car le modèle ne converge pas**
+
+```{r comparaison HD/G modèle 3, message=FALSE, warning=FALSE}
+# p.value <- modele.3.gr %>%
+#   summary() %>%
+#   coef() %>% 
+#   as.data.frame() %>%
+#   select(`Pr(>|z|)`) %>%
+#   round(3)
+# 
+# or <- modele.3.gr %>%
+#   summary() %>%
+#   coef() %>% 
+#   as.data.frame() %>% 
+#   select(Estimate) %>%
+#   exp() %>% 
+#   round(3)
+# 
+# int.conf <- modele.3.gr %>%
+#   confint() %>% 
+#   exp()  %>%
+#   round(3) %>%
+#   as.data.frame()
+# 
+# cbind(or, int.conf, p.value) %>% 
+#   as.data.frame() %>%
+#   add_rownames() %>%
+#   rename(Groupe = rowname,
+#          OR = Estimate,
+#          IC.inf = `2.5 %`,
+#          IC.sup = `97.5 %`,
+#          p = `Pr(>|z|)`) %>%
+#   kable()
+```
+
+**Modèle 4**
+
+```{r comparaison HD/G modèle 4, message=FALSE, warning=FALSE}
+p.value <- modele.4.gr %>%
+  summary() %>%
+  coef() %>% 
+  as.data.frame() %>%
+  select(`Pr(>|z|)`) %>%
+  round(3)
+
+or <- modele.4.gr %>%
+  summary() %>%
+  coef() %>% 
+  as.data.frame() %>% 
+  select(Estimate) %>%
+  exp() %>% 
+  round(3)
+
+int.conf <- modele.4.gr %>%
+  confint() %>% 
+  exp()  %>%
+  round(3) %>%
+  as.data.frame()
+
+cbind(or, int.conf, p.value) %>% 
+  as.data.frame() %>%
+  add_rownames() %>%
+  rename(Groupe = rowname,
+         OR = Estimate,
+         IC.inf = `2.5 %`,
+         IC.sup = `97.5 %`,
+         p = `Pr(>|z|)`) %>%
+  kable()
+```
+
+## Hémodialyse vs dialyse péritonéale
+
+```{r modeles HD vs DP, include=FALSE}
+modele.0.dp <- irc.complet %>%
   filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
   mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1)) %>% 
-  glm(METHOn~nephgp, data = ., family = "binomial") %>% 
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female")),
+         anirt = factor(anirt),
+         age = cut(age, breaks = c(0,40,200))) %>% 
+  glm(METHOn~nephgp, data = ., family = "binomial")
+
+modele.1.dp <- irc.complet %>%
+  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female")),
+         anirt = factor(anirt),
+         age = cut(age, breaks = c(0,40,200))) %>% 
+  glm(METHOn~nephgp+age+sex+anirt, data = ., family = "binomial")
+
+modele.2.dp <- irc.complet %>%
+  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female")),
+         anirt = factor(anirt),
+         age = cut(age, breaks = c(0,40,200))) %>% 
+  glm(METHOn~nephgp+age+sex+anirt+DIABn+ICn+avc_ait+KCn+gr_bmi, data = ., family = "binomial")
+
+modele.3.dp <- irc.complet %>%
+  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female")),
+         anirt = factor(anirt),
+         age = cut(age, breaks = c(0,40,200))) %>% 
+  glm(METHOn~nephgp+age+sex+anirt+HBINI+CREATINI+ALBINI, data = ., family = "binomial")
+
+modele.4.dp <- irc.complet %>%
+  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
+  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
+         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
+         sex = factor(sex, labels = c("Male", "Female")),
+         anirt = factor(anirt),
+         age = cut(age, breaks = c(0,40,200))) %>% 
+  glm(METHOn~nephgp+age+sex+anirt+MARCHn, data = ., family = "binomial")
+```
+
+**Sans ajustement**
+```{r comparaison HD/DP sans ajustement, echo=FALSE, message=FALSE, warning=FALSE}
+p.value <- modele.0.dp %>%
+  summary() %>%
+  coef() %>% 
+  as.data.frame() %>%
+  select(`Pr(>|z|)`) %>%
+  round(3)
+
+or <- modele.0.dp %>% 
   summary() %>% 
   coef() %>%  
   as.data.frame() %>% 
@@ -574,11 +708,7 @@ or <- irc.etude %>%
   exp() %>% 
   round(3)
 
-int.conf <- irc.etude %>%
-  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
-  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1)) %>% 
-  glm(METHOn~nephgp, data = ., family = "binomial") %>% 
+int.conf <- modele.0.dp %>% 
   confint() %>% 
   exp()  %>%
   round(3) %>%
@@ -598,37 +728,22 @@ cbind(or, int.conf, p.value) %>%
 
 **Modèle 1**
 ```{r comparaison HD/DP modèle 1, message=FALSE, warning=FALSE}
-p.value <- irc.etude %>%
-  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
-  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
-         sex = factor(sex, labels = c("Male", "Female"))) %>% 
-  glm(METHOn~nephgp+age+sex+anirt, data = ., family = "binomial") %>%
+p.value <- modele.1.dp %>%
   summary() %>%
   coef() %>% 
   as.data.frame() %>%
   select(`Pr(>|z|)`) %>%
   round(3)
 
-or <- irc.etude %>%
-  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
-  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
-         sex = factor(sex, labels = c("Male", "Female"))) %>% 
-  glm(METHOn~nephgp+age+sex+anirt, data = ., family = "binomial") %>% 
-  summary() %>% 
-  coef() %>%  
+or <- modele.1.dp %>%
+  summary() %>%
+  coef() %>% 
   as.data.frame() %>% 
   select(Estimate) %>%
   exp() %>% 
   round(3)
 
-int.conf <- irc.etude %>%
-  filter(METHOn %in% c("Hémodialyse", "Dialyse péritonéale")) %>%
-  mutate(nephgp = relevel(factor(nephgp), ref = "APKD"),
-         METHOn = ifelse(METHOn=="Hémodialyse", 0, 1),
-         sex = factor(sex, labels = c("Male", "Female"))) %>% 
-  glm(METHOn~nephgp+age+sex+anirt, data = ., family = "binomial") %>% 
+int.conf <- modele.1.dp %>%
   confint() %>% 
   exp()  %>%
   round(3) %>%
@@ -642,30 +757,116 @@ cbind(or, int.conf, p.value) %>%
          IC.inf = `2.5 %`,
          IC.sup = `97.5 %`,
          p = `Pr(>|z|)`) %>%
-  mutate(Groupe = c("Intercept","Diabète","IgA","GNC 1","GNC 2","Age","Sexe Femme","Annee")) %>%
   kable()
 ```
 
 **Modèle 2**
-```{r comparaison HD/DP modèle 2}
+```{r comparaison HD/DP modèle 2, message=FALSE, warning=FALSE}
+p.value <- modele.2.dp %>%
+  summary() %>%
+  coef() %>% 
+  as.data.frame() %>%
+  select(`Pr(>|z|)`) %>%
+  round(3)
 
+or <- modele.2.dp %>%
+  summary() %>%
+  coef() %>% 
+  as.data.frame() %>% 
+  select(Estimate) %>%
+  exp() %>% 
+  round(3)
+
+int.conf <- modele.2.dp %>%
+  confint() %>% 
+  exp()  %>%
+  round(3) %>%
+  as.data.frame()
+
+cbind(or, int.conf, p.value) %>% 
+  as.data.frame() %>%
+  add_rownames() %>%
+  rename(Groupe = rowname,
+         OR = Estimate,
+         IC.inf = `2.5 %`,
+         IC.sup = `97.5 %`,
+         p = `Pr(>|z|)`) %>%
+  kable()
 ```
 
 **Modèle 3**
-```{r comparaison HD/DP modèle 3}
+```{r comparaison HD/DP modèle 3, message=FALSE, warning=FALSE}
+p.value <- modele.3.dp %>%
+  summary() %>%
+  coef() %>% 
+  as.data.frame() %>%
+  select(`Pr(>|z|)`) %>%
+  round(3)
 
+or <- modele.3.dp %>%
+  summary() %>%
+  coef() %>% 
+  as.data.frame() %>% 
+  select(Estimate) %>%
+  exp() %>% 
+  round(3)
+
+int.conf <- modele.3.dp %>%
+  confint() %>% 
+  exp()  %>%
+  round(3) %>%
+  as.data.frame()
+
+cbind(or, int.conf, p.value) %>% 
+  as.data.frame() %>%
+  add_rownames() %>%
+  rename(Groupe = rowname,
+         OR = Estimate,
+         IC.inf = `2.5 %`,
+         IC.sup = `97.5 %`,
+         p = `Pr(>|z|)`) %>%
+  kable()
 ```
 
 **Modèle 4**
-```{r comparaison HD/DP modèle 4}
+```{r comparaison HD/DP modèle 4, message=FALSE, warning=FALSE}
+p.value <- modele.4.dp %>%
+  summary() %>%
+  coef() %>% 
+  as.data.frame() %>%
+  select(`Pr(>|z|)`) %>%
+  round(3)
 
+or <- modele.4.dp %>%
+  summary() %>%
+  coef() %>% 
+  as.data.frame() %>% 
+  select(Estimate) %>%
+  exp() %>% 
+  round(3)
+
+int.conf <- modele.4.dp %>%
+  confint() %>% 
+  exp()  %>%
+  round(3) %>%
+  as.data.frame()
+
+cbind(or, int.conf, p.value) %>% 
+  as.data.frame() %>%
+  add_rownames() %>%
+  rename(Groupe = rowname,
+         OR = Estimate,
+         IC.inf = `2.5 %`,
+         IC.sup = `97.5 %`,
+         p = `Pr(>|z|)`) %>%
+  kable()
 ```
 
-# Etude de survie au stade de la dialyse
+# Etude de survie au stade de la dialyse {.tabset .tabset-fade .tabset-pills}
 
-### Courbe de survie uniquement pour la néphropathie à IgA comparant l’hémodialyse, la dialyse péritonéale, et la greffe pré-emptive 
+## Courbe de survie uniquement pour la néphropathie à IgA comparant l’hémodialyse, la dialyse péritonéale, et la greffe pré-emptive 
 
-**XXXXX Quelle catégorie mettre en référence ? Ajuster sur quelles variables ?**
+> **XXXXX Quelle catégorie mettre en référence ? Ajuster sur quelles variables ? On va voir pour ajuster sur l'inscription sur liste 'attente de greffe qui est un facteur important**
 
 ```{r multi_etats IgA survie selon suppleance, echo=FALSE}
 # Visualisation des données
@@ -710,6 +911,7 @@ iga %>%
 ```{r score propension sur inscription liste de greffe, include=FALSE}
 iga %>%
   mutate(x = as.numeric(DINSCMED - DDIRT, units = "days")/365.25) %>% 
+  filter(METHOn!="Greffe") %>% select(x) %>%  
   ggplot(aes(x)) + 
   geom_histogram(fill = "white", col = "black") +
   ggtitle("Durée entre suppléance et inscription liste greffe\n (droite = inscription post-suppléance)") +
@@ -718,8 +920,7 @@ iga %>%
 
 ```
 
-
-### Courbe de survie uniquement pour la néphropathie à IgA comparant l’hémodialyse sans greffe, greffe dans la 1 ère année de dialyse, greffe dans la 2 ème année de dialyse, greffe dans la 3 ème année de dialyse
+## Courbe de survie uniquement pour la néphropathie à IgA comparant l’hémodialyse sans greffe, greffe dans la 1 ère année de dialyse, greffe dans la 2 ème année de dialyse, greffe dans la 3 ème année de dialyse
 
 **Le point 0 est le point de greffe, mais les patient qui ont survécu suffisamment longtemps pour avoir une greffe sont peut-être plus "résistants" et peuvent mourir moins vite ?**
 
@@ -771,12 +972,7 @@ iga %>%
   survfit(Surv(tstart, tstop, event)~gr_delai_greffe+cluster(id), data = .) 
 ```
 
-**XXXXX Pas beaucoup de patients décédés**
-
-
-
-
-### Courbe de survie globale (HD, DP, et greffe pré-emptive) comparant la néphropathie à IgA avec les 4 groupes
+## Courbe de survie globale (HD, DP, et greffe pré-emptive) comparant la néphropathie à IgA avec les 4 groupes
 
 ```{r survie globale}
 par(mar = c(4,4,0,0.3))
