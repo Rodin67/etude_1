@@ -1,4 +1,5 @@
 if (interactive()) {
+  library(epiDisplay)
   library(knitr)
   library(stats)
   library(readr)
@@ -14,6 +15,5 @@ if (interactive()) {
   library(classInt)
   library(epitools)
   library(compareGroups)
-  library(mice)
   library(MatchIt)
 } else {}
